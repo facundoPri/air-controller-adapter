@@ -412,9 +412,9 @@ impl StudioApp {
         } else if s.listening {
             (
                 if s.actions_enabled && s.native_active {
-                    "Listo"
+                    "Ready"
                 } else {
-                    "Conectado · solo lectura"
+                    "Connected · read-only"
                 },
                 OK,
             )
@@ -471,9 +471,9 @@ impl Render for StudioApp {
                     .small()
                     .ghost()
                     .label(if self.studio.actions_requested {
-                        "Pausar control"
+                        "Pause remote"
                     } else {
-                        "Reanudar control"
+                        "Resume remote"
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.studio
@@ -485,7 +485,7 @@ impl Render for StudioApp {
                 d.child(
                     Button::new("retry-control")
                         .small()
-                        .label("Reanudar lector")
+                        .label("Resume reader")
                         .disabled(self.studio.capture_starting())
                         .on_click(cx.listener(|this, _, _, cx| {
                             let result = this.studio.start_capture_service();

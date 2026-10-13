@@ -182,7 +182,7 @@ mod mac {
         }
         pub fn open(&mut self, path: &str) -> Result<Vec<u8>, String> {
             if !self.available() {
-                return Err("Iniciá ACA Capture antes de activar acciones.".into());
+                return Err("Start ACA Capture before enabling actions.".into());
             }
             if path.is_empty() || path.len() > 512 {
                 return Err("Invalid HID path".into());

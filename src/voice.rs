@@ -12,8 +12,8 @@ pub enum Button {
 impl std::fmt::Display for Button {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Keyboard(code) => write!(f, "Tecla HID {code:02X}"),
-            Self::Consumer(code) => write!(f, "Control multimedia HID {code:04X}"),
+            Self::Keyboard(code) => write!(f, "HID key {code:02X}"),
+            Self::Consumer(code) => write!(f, "Consumer HID usage {code:04X}"),
         }
     }
 }

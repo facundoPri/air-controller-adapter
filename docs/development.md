@@ -1,6 +1,6 @@
-# Desarrollo y empaquetado
+# Development and packaging
 
-Requisitos: Mac, Xcode/Command Line Tools y Rust con Cargo en PATH. El entorno de desarrollo usa Rust 1.99, Apple Silicon y las versiones de Cargo.lock. No hay dependencias sobre rutas personales de otro checkout. `READY_AIR_RUST_TOOLCHAIN` permite elegir un directorio que contenga `bin/cargo`; una selección local también puede guardarse en `.tools/rust-toolchain-path`, ignorada por Git.
+Requirements: a Mac, Xcode/Command Line Tools, and Rust with Cargo in PATH. The development environment uses Rust 1.99, Apple Silicon, and the versions in Cargo.lock. There are no dependencies on personal paths in another checkout. `READY_AIR_RUST_TOOLCHAIN` can point to a directory containing `bin/cargo`; a local selection can also be saved in `.tools/rust-toolchain-path`, which Git ignores.
 
 ```sh
 git clone https://github.com/facundoPri/air-controller-adapter.git
@@ -9,25 +9,25 @@ cd air-controller-adapter
 ./script/build_and_run.sh --build-only
 ```
 
-El empaquetador genera `dist/ACA Studio.app` y `dist/ACA Capture.app`. Sin `--build-only` abre Studio. `READY_AIR_PROFILE=release` habilita compilación optimizada y `READY_AIR_DIST` cambia la carpeta de salida. Los nombres internos del crate y ejecutables conservan la identidad anterior para mantener continuidad.
+The packaging script creates `dist/ACA Studio.app` and `dist/ACA Capture.app`. Without `--build-only`, it opens Studio. `READY_AIR_PROFILE=release` enables an optimized build, and `READY_AIR_DIST` changes the output directory. Internal crate and executable names preserve the previous identity for continuity.
 
 ```sh
 READY_AIR_PROFILE=release READY_AIR_DIST="$PWD/dist/release" ./script/build_and_run.sh --build-only
 "dist/release/ACA Studio.app/Contents/MacOS/ReadyForAirStudio" --verify-capture
 ```
 
-El orden importa: se compila y firma Capture primero; su hash se integra al compilar Studio. Después se firma Studio. Compilar Studio directamente con Cargo sirve para desarrollar, pero no genera un par autorizado para iniciar el lector. `--verify-capture` comprueba el par sin abrir la UI, iniciar lectura ni solicitar privilegios.
+Order matters: Capture is built and signed first, and its hash is embedded when compiling Studio. Studio is then signed. Building Studio directly with Cargo works for development but does not create a matched pair authorized to start the reader. `--verify-capture` checks the pair without opening the UI, starting capture, or requesting privileges.
 
-La firma por defecto es ad hoc. `READY_AIR_SIGN_IDENTITY` permite elegir una identidad instalada; eso por sí solo no agrega notarización ni certifica el flujo de distribución.
+Signing is ad hoc by default. `READY_AIR_SIGN_IDENTITY` selects an installed identity; this alone does not add notarization or certify the distribution workflow.
 
-Los tests comprueban en aislamiento informes HID, colas, cancelación, persistencia, borradores, permisos observados y arranque del lector. No conceden permisos, no prueban efectos reales sobre el escritorio ni reemplazan una instalación de prueba en otra Mac. Los tests opcionales de render y preferencias Zoom se omiten de forma predeterminada.
+Tests check HID reports, queues, cancellation, persistence, drafts, observed permissions, and reader startup in isolation. They do not grant permissions, test actual desktop effects, or replace installation testing on another Mac. Optional renderer and Zoom preference tests are skipped by default.
 
-La descarga de preview incluye dos bundles, README y avisos de dependencias. Excluye datos locales, logs de hardware, notas de coordinación y material de referencia de terceros.
+The preview download contains two app bundles, README, and dependency notices. It excludes local data, hardware logs, coordination notes, and third-party reference material.
 
-Para preparar un ZIP a partir del par optimizado ya compilado, con el commit de origen registrado, firmas verificadas antes y después de extraer y checksum SHA-256:
+To create a ZIP from an already-built optimized pair, with the source commit recorded, signatures verified before and after extraction, and a SHA-256 checksum:
 
 ```sh
-./script/package_release.sh v0.1.0-preview.1
+./script/package_release.sh v0.1.0-preview.2
 ```
 
-El resultado queda en `dist/releases/v0.1.0-preview.1/`. `THIRD_PARTY_NOTICES.md` corresponde a Cargo.lock y al árbol de dependencias macOS arm64 (incluye herramientas de compilación). Actualizá el inventario y los textos originales de licencia al cambiar dependencias.
+Output goes to `dist/releases/v0.1.0-preview.2/`. `THIRD_PARTY_NOTICES.md` corresponds to Cargo.lock and the macOS arm64 dependency tree, including build tools. Update its inventory and original license texts when changing dependencies. Preserve upstream license wording and author names.

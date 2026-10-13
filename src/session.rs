@@ -58,9 +58,9 @@ impl Launcher {
                     } else {
                         let detail = String::from_utf8_lossy(&out.stderr);
                         if detail.contains("30-minute capture session ended") {
-                            Err("La sesión de lectura de 30 minutos terminó. Bluetooth puede seguir conectado; usá Reanudar lector para las funciones personalizadas.".into())
+                            Err("The 30-minute capture session ended. Bluetooth may still be connected; use Resume reader to restore custom actions.".into())
                         } else {
-                            Err(format!("El lector no está activo: {}", detail.trim()))
+                            Err(format!("The reader is not active: {}", detail.trim()))
                         }
                     }
                 }))
@@ -87,7 +87,7 @@ pub fn packaged_helper(executable: &Path) -> Result<PathBuf, String> {
     Ok(executable
         .ancestors()
         .nth(4)
-        .ok_or("No se encontró el bundle de Studio")?
+        .ok_or("Studio app bundle not found")?
         .join("ACA Capture.app/Contents/MacOS/ReadyForAirCapture"))
 }
 pub fn verify_packaged_helper(helper: &Path) -> Result<(), String> {
@@ -100,7 +100,7 @@ fn helper_digest(path: &Path) -> Result<String, String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err("No se pudo verificar Capture".into());
+        return Err("Could not verify Capture".into());
     }
     Ok(String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
@@ -111,24 +111,24 @@ fn helper_digest(path: &Path) -> Result<String, String> {
 fn verify_helper(helper: &Path, expected: Option<&str>) -> Result<(), String> {
     let expected = expected
         .filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
-        .ok_or(
-            "Studio no tiene una identidad de Capture integrada. Usá el script de empaquetado.",
-        )?;
+        .ok_or("Studio has no embedded Capture identity. Build using the packaging script.")?;
     // Reject links in the executable and bundle components (not /tmp -> /private/tmp).
     for path in helper.ancestors().take(4) {
         if std::fs::symlink_metadata(path)
-            .map_err(|_| "Falta ACA Capture junto a Studio")?
+            .map_err(|_| "ACA Capture must be installed next to Studio")?
             .file_type()
             .is_symlink()
         {
-            return Err("Capture no puede ser un enlace simbólico".into());
+            return Err("Capture cannot be a symbolic link".into());
         }
     }
     if !helper.is_file() {
-        return Err("Capture no es un ejecutable regular".into());
+        return Err("Capture is not a regular executable".into());
     }
     if helper_digest(helper)? != expected {
-        return Err("Capture no corresponde a esta versión de Studio. Volvé a instalar el paquete completo.".into());
+        return Err(
+            "Capture does not match this version of Studio. Reinstall the complete package.".into(),
+        );
     }
     Ok(())
 }
@@ -146,12 +146,12 @@ fn authorization_script(
     expected: &str,
 ) -> Result<String, String> {
     if uid == 0 {
-        return Err("Studio debe ejecutarse como tu usuario, no como administrador".into());
+        return Err("Studio must run as your user, not as administrator".into());
     }
-    let helper = helper.to_str().ok_or("Ruta del lector inválida")?;
-    let socket = socket.to_str().ok_or("Ruta de conexión inválida")?;
+    let helper = helper.to_str().ok_or("Invalid reader path")?;
+    let socket = socket.to_str().ok_or("Invalid connection path")?;
     if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("Identidad de Capture inválida".into());
+        return Err("Invalid Capture identity".into());
     }
     let command = staged_command(helper, socket, uid, expected)?;
     let literal = command.replace('\\', "\\\\").replace('"', "\\\"");
@@ -164,7 +164,7 @@ fn staged_command(helper: &str, socket: &str, uid: u32, expected: &str) -> Resul
         .ancestors()
         .nth(3)
         .and_then(Path::to_str)
-        .ok_or("Bundle de Capture inválido")?;
+        .ok_or("Invalid Capture bundle")?;
     // The elevated shell first copies into a private root-owned directory. Hash
     // verification AND execution target that immutable-to-the-user copy, closing
     // the replace-between-check-and-exec race on the editable source bundle.
@@ -179,7 +179,7 @@ for item in "$stage/Capture.app" "$stage/Capture.app/Contents" "$stage/Capture.a
 done
 exe="$stage/Capture.app/Contents/MacOS/ReadyForAirCapture"
 actual=$(/usr/bin/shasum -a 256 "$exe")
-test "${{actual%% *}}" = '{expected}' || {{ echo 'Capture cambió durante la autorización; ejecución rechazada' >&2; exit 70; }}
+test "${{actual%% *}}" = '{expected}' || {{ echo 'Capture changed during authorization; execution rejected' >&2; exit 70; }}
 /usr/bin/codesign --verify --strict "$stage/Capture.app"
 /usr/bin/env SUDO_UID={uid} "$exe" --socket {socket}
 "#,
@@ -227,7 +227,7 @@ mod tests {
             .unwrap();
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(out.status.code(), Some(70));
-        assert!(String::from_utf8_lossy(&out.stderr).contains("ejecución rechazada"));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("execution rejected"));
     }
     #[test]
     fn repeated_start_keeps_one_process() {

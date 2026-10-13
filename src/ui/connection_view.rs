@@ -46,7 +46,7 @@ impl StudioApp {
         );
         let checks = [
             (
-                "Studio · Accesibilidad",
+                "Studio · Accessibility",
                 if ready_for_air::native_input::trusted() {
                     Access::Granted
                 } else {
@@ -54,26 +54,22 @@ impl StudioApp {
                 },
                 "accessibility",
             ),
+            ("Studio · Input Monitoring", permissions::input(), "input"),
+            ("Capture · Input Monitoring", capture, "input"),
             (
-                "Studio · Monitoreo de entrada",
-                permissions::input(),
-                "input",
-            ),
-            ("Capture · Monitoreo de entrada", capture, "input"),
-            (
-                "Bluetooth · permiso para buscar",
+                "Bluetooth · discovery permission",
                 permissions::optional("bluetooth"),
                 "bluetooth",
             ),
             (
-                "Micrófono · opcional, solo voz",
+                "Microphone · optional, voice only",
                 permissions::optional("microphone"),
                 "microphone",
             ),
         ];
-        let mut setup = card().child(heading("Preparar esta Mac"))
-            .child(caption("1. Encendé el control. Si ya está conectado, se detecta solo. Para emparejarlo: Atrás + OK; luego Buscar. Si hay varios, elegí uno."))
-            .child(caption("2. Habilitá Studio en Accesibilidad y Monitoreo de entrada. Autorizá el lector cuando macOS lo pida; Capture comprueba su propio permiso, separado del de Studio."));
+        let mut setup = card().child(heading("Set up this Mac"))
+            .child(caption("1. Turn on the remote. Connected remotes are detected automatically. To pair: hold Back + OK, then choose Discover. Select one if several appear."))
+            .child(caption("2. Enable Accessibility and Input Monitoring for Studio. Authorize the reader when macOS asks; Capture checks its own permission separately from Studio."));
         for (index, (label, access, pane)) in checks.into_iter().enumerate() {
             setup = setup.child(
                 div()
@@ -83,7 +79,7 @@ impl StudioApp {
                     .child(div().flex_1().child(format!("{label}: {}", access.label())))
                     .child(
                         Button::new(("permission", index))
-                            .label("Abrir Ajustes")
+                            .label("Open Settings")
                             .small()
                             .ghost()
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -93,25 +89,25 @@ impl StudioApp {
                     ),
             );
         }
-        setup = setup.child(caption(format!("Adaptador Bluetooth: {}. El estado se consulta al buscar; tener permiso no implica que esté encendido.", s.bluetooth_state)))
-            .child(caption("3. Cuando diga Lectura comprobada, llegaron paquetes por Capture. Permiso concedido solo confirma TCC; Canal autenticado solo confirma la conexión entre procesos. Si cambió la firma, quitá y agregá la app exacta en Ajustes y reabrila."))
-            .child(caption("Automation es opcional y depende de la acción y aplicación destino. macOS lo pide al ejecutar un AppleScript; los fallos se muestran en Activity. No se solicitan permisos de audio o Automation al iniciar."))
-            .child(Button::new("bluetooth-settings").label("Ajustes de Bluetooth").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+        setup = setup.child(caption(format!("Bluetooth adapter: {}. Status is checked during discovery; permission does not mean the adapter is powered on.", s.bluetooth_state)))
+            .child(caption("3. Reading verified means packets have arrived through Capture. Permission granted only confirms TCC; Authenticated channel only confirms the process connection. If the signature changed, remove and re-add the exact app in Settings and reopen it."))
+            .child(caption("Automation is optional and depends on the action and target application. macOS requests it when an AppleScript runs; failures appear in Activity. Audio and Automation permissions are not requested at startup."))
+            .child(Button::new("bluetooth-settings").label("Bluetooth settings").small().ghost().on_click(cx.listener(|this, _, _, cx| {
                 this.report("connection", permissions::open_settings("radio")); cx.notify();
             })))
-            .child(caption("Si una app no aparece en Monitoreo de entrada, usá + para agregar Studio o Capture desde esta carpeta. Habilitá solo el requisito pendiente; macOS puede pedir cerrar y reabrir."))
-            .child(Button::new("show-permission-apps").label("Mostrar apps para permisos").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+            .child(caption("If an app is missing from Input Monitoring, use + to add Studio or Capture from this folder. Enable the missing permission; macOS may ask you to quit and reopen the app."))
+            .child(Button::new("show-permission-apps").label("Show apps for permissions").small().ghost().on_click(cx.listener(|this, _, _, cx| {
                 let r = std::env::current_exe().map_err(|e|e.to_string()).and_then(|exe| {
-                    let app = exe.ancestors().nth(3).ok_or("No se encontró el bundle")?;
+                    let app = exe.ancestors().nth(3).ok_or("App bundle not found")?;
                     let status = std::process::Command::new("/usr/bin/open").arg("-R").arg(app).status().map_err(|e|e.to_string())?;
-                    if status.success() { Ok("Carpeta de apps abierta".into()) } else { Err("No se pudo abrir Finder".into()) }
+                    if status.success() { Ok("App folder opened".into()) } else { Err("Could not open Finder".into()) }
                 });
                 this.report("connection", r); cx.notify();
             })))
-            .child(Button::new("automation-settings").label("Permisos de Automation").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+            .child(Button::new("automation-settings").label("Automation permissions").small().ghost().on_click(cx.listener(|this, _, _, cx| {
                 this.report("connection", permissions::open_settings("automation")); cx.notify();
             })))
-            .child(Button::new("recheck-permissions").label("Volver a comprobar / reintentar lector").small().on_click(cx.listener(|this, _, _, cx| {
+            .child(Button::new("recheck-permissions").label("Check again / retry reader").small().on_click(cx.listener(|this, _, _, cx| {
                 let r = this.studio.start_capture_service(); this.report("connection",r); cx.notify();
             })));
 
@@ -119,18 +115,18 @@ impl StudioApp {
             .flex_1()
             .min_w(px(300.))
             .child(heading("Remote"))
-            .child(state_row("Control", s.connected, "Presente", if s.connecting { "Searching…" } else { "Not connected" }, OK))
+            .child(state_row("Control", s.connected, "Present", if s.connecting { "Searching…" } else { "Not connected" }, OK))
             .child(state_row("HID capture", s.listening, "Listening", "Stopped", OK))
-            .child(state_row("Actions service", s.capture_service, "Canal autenticado", "No iniciado", OK))
+            .child(state_row("Actions service", s.capture_service, "Authenticated channel", "Not started", OK))
             .when(s.needs_retry(), |d| d.child(
-                Button::new("start-capture-service").label("Reanudar lector").small().disabled(s.capture_starting())
+                Button::new("start-capture-service").label("Resume reader").small().disabled(s.capture_starting())
                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                         let result = this.studio.start_capture_service();
                         this.report("connection", result);
                         cx.notify();
                     }))
             ))
-            .child(caption("Studio prepara el control automáticamente al abrirse. Si macOS pide autorización, usá su diálogo. La sesión actual dura hasta 30 minutos; al terminar, Reanudar lector la renueva. No se abre Terminal ni se instala un servicio permanente."))
+            .child(caption("Studio prepares the remote automatically at startup. Use the macOS dialog if authorization is requested. Sessions last up to 30 minutes; use Resume reader to renew an expired session. No Terminal window is opened and no permanent service is installed."))
             .when_some(self.message("connection").cloned(), |d, m| d.child(notice(&m)))
             .child(state_row(
                 "Mode",
@@ -334,7 +330,7 @@ impl StudioApp {
                             cx.notify();
                         }),
                     ))
-                    .child(Button::new("reload-2").label("Descartar borrador y recargar").small().ghost().on_click(
+                    .child(Button::new("reload-2").label("Discard draft and reload").small().ghost().on_click(
                         cx.listener(|this, _: &ClickEvent, _, cx| {
                             let r = this
                                 .studio
@@ -375,7 +371,7 @@ impl StudioApp {
             )
             .when_some(self.message("config").cloned(), |d, m| d.child(notice(&m)))
             .child(caption(
-                "Configuración completa en JSON. Se valida, guarda y aplica automáticamente.",
+                "Full configuration as JSON. Validated, saved, and applied automatically.",
             ))
             .when_some(editor, |d, editor| {
                 d.child(

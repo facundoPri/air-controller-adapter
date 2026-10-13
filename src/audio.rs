@@ -41,19 +41,19 @@ fn record(
             .filter(|d| d.name().ok().as_deref() == Some(name.as_str()));
         let device = matches
             .next()
-            .ok_or_else(|| format!("La entrada {name} no está disponible. Elegí otra entrada."))?;
+            .ok_or_else(|| format!("Input {name} is unavailable. Select another input."))?;
         if matches.next().is_some() {
             return Err(format!(
-                "Hay más de una entrada llamada {name}; elegí la predeterminada del sistema."
+                "Multiple inputs are named {name}; select the system default."
             ));
         }
         device
     } else {
         host.default_input_device()
-            .ok_or("No hay entrada de audio predeterminada.")?
+            .ok_or("No default audio input is available.")?
     };
     if stop.load(Ordering::Relaxed) {
-        return Err("Grabación cancelada.".into());
+        return Err("Recording canceled.".into());
     }
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
     let name = device.name().map_err(|e| e.to_string())?;
@@ -92,11 +92,11 @@ fn record(
         }
         cpal::SampleFormat::I16 => build!(i16, |v: &i16| *v),
         cpal::SampleFormat::U16 => build!(u16, |v: &u16| (*v as i32 - 32768) as i16),
-        format => return Err(format!("Formato de audio aún no soportado: {format:?}")),
+        format => return Err(format!("Audio format not yet supported: {format:?}")),
     };
     // A permission prompt can delay stream creation; honor Stop before playing.
     if stop.load(Ordering::Relaxed) {
-        return Err("Grabación cancelada.".into());
+        return Err("Recording canceled.".into());
     }
     stream.play().map_err(|e| e.to_string())?;
     let _ = tx.send(Event::AudioStarted(name.clone()));
@@ -110,7 +110,7 @@ fn record(
     if started.elapsed() >= Duration::from_secs(MAX_SECONDS) {
         log(
             tx,
-            format!("Grabación detenida al alcanzar el límite de {MAX_SECONDS} segundos."),
+            format!("Recording stopped after reaching the {MAX_SECONDS}-second limit."),
         );
     }
     drop(stream);
@@ -119,7 +119,7 @@ fn record(
     }
     let samples = samples.lock().unwrap();
     if samples.is_empty() {
-        return Err("No llegaron muestras. Revisá el permiso de Micrófono de la app.".into());
+        return Err("No audio samples received. Check the app's Microphone permission.".into());
     }
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     let stamp = std::time::SystemTime::now()

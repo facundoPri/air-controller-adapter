@@ -24,15 +24,15 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirStudio</string>
 <key>CFBundleName</key><string>ACA Studio</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSBluetoothAlwaysUsageDescription</key><string>Buscar y conectar tu Motorola Ready For Air Remote.</string>
-<key>NSBluetoothPeripheralUsageDescription</key><string>Buscar y conectar tu Motorola Ready For Air Remote.</string>
-<key>NSAppleEventsUsageDescription</key><string>Ejecutar las acciones y AppleScripts que asignaste a los botones.</string>
-<key>NSMicrophoneUsageDescription</key><string>Grabar desde el micrófono que elegís al pulsar Grabar o el botón del control que asignaste y activaste.</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Discover and connect your Motorola Ready For Air Remote.</string>
+<key>NSBluetoothPeripheralUsageDescription</key><string>Discover and connect your Motorola Ready For Air Remote.</string>
+<key>NSAppleEventsUsageDescription</key><string>Run the actions and AppleScripts you assigned to buttons.</string>
+<key>NSMicrophoneUsageDescription</key><string>Record from your selected microphone when you press Record or the remote button assigned to recording.</string>
 </dict></plist>
 PLIST
 CAPTURE="$DIST/ACA Capture.app"
@@ -46,7 +46,7 @@ cat > "$CAPTURE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirCapture</string>
 <key>CFBundleName</key><string>ACA Capture</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST

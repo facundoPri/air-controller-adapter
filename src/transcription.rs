@@ -64,10 +64,8 @@ fn capture(mut pipe: impl Read + Send + 'static) -> Receiver<Captured> {
 fn collect(rx: &Receiver<Captured>) -> Result<Vec<u8>, String> {
     match rx.recv_timeout(Duration::from_secs(1)) {
         Ok(Captured::Complete(bytes)) => Ok(bytes),
-        Ok(Captured::TooLarge) => {
-            Err("La transcripción excedió el límite de salida de 64 KiB.".into())
-        }
-        _ => Err("No se pudo leer la salida del transcriptor local.".into()),
+        Ok(Captured::TooLarge) => Err("Transcription exceeded the 64 KiB output limit.".into()),
+        _ => Err("Could not read the local transcriber output.".into()),
     }
 }
 
@@ -87,22 +85,22 @@ fn run_with_cancel(
 ) -> Result<String, String> {
     let check = || {
         if cancellation.is_some_and(|(g, e)| g.load(std::sync::atomic::Ordering::Acquire) != e) {
-            Err("Transcripción cancelada".to_string())
+            Err("Transcription canceled".to_string())
         } else {
             Ok(())
         }
     };
     check()?;
     if config.program.trim().is_empty() {
-        return Err("Configurá un ejecutable local de transcripción.".into());
+        return Err("Configure a local transcription executable.".into());
     }
     if !config.args.iter().any(|arg| arg.contains("{audio}")) {
-        return Err("Los argumentos de transcripción deben incluir {audio}.".into());
+        return Err("Transcription arguments must include {audio}.".into());
     }
     if !audio.is_file() {
-        return Err("No se encontró la grabación para transcribir.".into());
+        return Err("Recording not found for transcription.".into());
     }
-    let audio = audio.to_str().ok_or("La ruta del audio no es UTF-8.")?;
+    let audio = audio.to_str().ok_or("The audio path is not UTF-8.")?;
     let mut command = Command::new(&config.program);
     command
         .args(config.args.iter().map(|arg| arg.replace("{audio}", audio)))
@@ -115,7 +113,7 @@ fn run_with_cancel(
         command.process_group(0);
     }
     let child = command.spawn().map_err(
-        |_| "No se pudo iniciar el transcriptor local. Revisá el ejecutable y sus permisos.",
+        |_| "Could not start the local transcriber. Check its executable and permissions.",
     )?;
     let mut running = crate::process::Running::new(child);
     let stdout = capture(
@@ -123,14 +121,14 @@ fn run_with_cancel(
             .child
             .stdout
             .take()
-            .ok_or("Falta stdout del transcriptor.")?,
+            .ok_or("Transcriber stdout is unavailable.")?,
     );
     let stderr = capture(
         running
             .child
             .stderr
             .take()
-            .ok_or("Falta stderr del transcriptor.")?,
+            .ok_or("Transcriber stderr is unavailable.")?,
     );
     let start = Instant::now();
     // Hold completed results while waiting for exit; overflow aborts immediately.
@@ -143,12 +141,10 @@ fn run_with_cancel(
                 match rx.try_recv() {
                     Ok(Captured::Complete(bytes)) => *value = Some(bytes),
                     Ok(Captured::TooLarge) => {
-                        return Err(
-                            "La transcripción excedió el límite de salida de 64 KiB.".into()
-                        );
+                        return Err("Transcription exceeded the 64 KiB output limit.".into());
                     }
                     Ok(Captured::ReadError) => {
-                        return Err("No se pudo leer la salida del transcriptor local.".into());
+                        return Err("Could not read the local transcriber output.".into());
                     }
                     Err(_) => {}
                 }
@@ -157,12 +153,12 @@ fn run_with_cancel(
         if let Some(status) = running
             .child
             .try_wait()
-            .map_err(|_| "No se pudo consultar el transcriptor local.")?
+            .map_err(|_| "Could not query the local transcriber.")?
         {
             break status;
         }
         if start.elapsed() >= timeout {
-            return Err("El transcriptor local superó el tiempo máximo de espera.".into());
+            return Err("The local transcriber timed out.".into());
         }
         thread::sleep(Duration::from_millis(20));
     };
@@ -180,15 +176,15 @@ fn run_with_cancel(
     }
     if !status.success() {
         return Err(format!(
-            "El transcriptor local terminó con error (código {:?}). Revisá su configuración.",
+            "The local transcriber failed (exit code {:?}). Check its configuration.",
             status.code()
         ));
     }
-    let output =
-        String::from_utf8(output).map_err(|_| "El transcriptor devolvió texto que no es UTF-8.")?;
+    let output = String::from_utf8(output)
+        .map_err(|_| "The transcriber returned text that is not UTF-8.")?;
     let output = output.trim();
     if output.is_empty() {
-        return Err("El transcriptor local no devolvió texto.".into());
+        return Err("The local transcriber returned no text.".into());
     }
     Ok(output.to_owned())
 }
@@ -251,7 +247,7 @@ mod tests {
         assert!(
             transcribe(&config, &audio)
                 .unwrap_err()
-                .contains("no devolvió texto")
+                .contains("returned no text")
         );
         config.args.clear();
         assert!(transcribe(&config, &audio).unwrap_err().contains("{audio}"));
@@ -270,7 +266,7 @@ mod tests {
         assert!(
             run(&config, &audio, Duration::from_millis(60))
                 .unwrap_err()
-                .contains("tiempo máximo")
+                .contains("timed out")
         );
         assert!(start.elapsed() < Duration::from_secs(2));
     }
@@ -285,8 +281,8 @@ mod tests {
 
     #[test]
     fn accepts_trimmed_text_and_rejects_invalid_utf8() {
-        let (_fixture, config, audio) = Fixture::new("printf '  Hola, mundo.  \\n'");
-        assert_eq!(transcribe(&config, &audio).unwrap(), "Hola, mundo.");
+        let (_fixture, config, audio) = Fixture::new("printf '  Hello, world.  \\n'");
+        assert_eq!(transcribe(&config, &audio).unwrap(), "Hello, world.");
         let (_fixture, config, audio) = Fixture::new("printf '\\377'");
         assert!(transcribe(&config, &audio).unwrap_err().contains("UTF-8"));
     }

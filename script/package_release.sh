@@ -3,7 +3,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
-TAG="${1:-v0.1.0-preview.1}"
+TAG="${1:-v0.1.0-preview.2}"
 case "$TAG" in ''|*[!a-zA-Z0-9._-]*) echo 'Invalid release tag' >&2; exit 2 ;; esac
 DIST="${READY_AIR_DIST:-$ROOT/dist/release}"
 OUTPUT="$ROOT/dist/releases/$TAG"

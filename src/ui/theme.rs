@@ -97,17 +97,6 @@ pub fn button_name(b: ButtonId) -> &'static str {
     }
 }
 
-/// English rendering of `Studio::source_label` (the core formats it in Spanish).
-pub fn source_text(label: &str) -> String {
-    if label.starts_with("Sin identificar") {
-        return "not identified yet · use Learn".into();
-    }
-    label
-        .replace("Tecla HID", "HID key")
-        .replace("Multimedia", "Consumer")
-        .replace("Botón mouse", "Mouse button")
-}
-
 pub fn profile_name(p: Profile) -> &'static str {
     match p {
         Profile::Normal => "Normal",
@@ -127,13 +116,13 @@ fn system_name(s: SystemAction) -> &'static str {
         SystemAction::MissionControl => "Mission Control",
         SystemAction::AppExpose => "App windows",
         SystemAction::ShowDesktop => "Show desktop",
-        SystemAction::Launchpad => "Aplicaciones / Launchpad",
+        SystemAction::Launchpad => "Apps / Launchpad",
         SystemAction::VolumeUp => "Volume up",
         SystemAction::VolumeDown => "Volume down",
         SystemAction::Mute => "Mute",
-        SystemAction::ZoomIn => "Acercar pantalla",
-        SystemAction::ZoomOut => "Alejar pantalla",
-        SystemAction::ZoomToggle => "Activar / desactivar zoom",
+        SystemAction::ZoomIn => "Zoom in",
+        SystemAction::ZoomOut => "Zoom out",
+        SystemAction::ZoomToggle => "Toggle zoom",
         SystemAction::DisplaySleep => "Display sleep",
         SystemAction::Sleep => "Sleep Mac",
         SystemAction::LockScreen => "Lock screen",
@@ -147,8 +136,8 @@ pub fn action_name(a: &Action) -> String {
         Action::Shortcut { key, modifiers } => {
             if modifiers.is_empty() {
                 match key.as_str() {
-                    "page_up" => return "Página arriba".into(),
-                    "page_down" => return "Página abajo".into(),
+                    "page_up" => return "Page Up".into(),
+                    "page_down" => return "Page Down".into(),
                     _ => {}
                 }
             }
@@ -173,6 +162,6 @@ pub fn action_name(a: &Action) -> String {
         Action::AppleScript { .. } => "AppleScript".into(),
         Action::Shell { .. } => "Shell command".into(),
         Action::Macro { steps } => format!("Macro · {} steps", steps.len()),
-        Action::VoiceToggle => "Grabar voz / dictar".into(),
+        Action::VoiceToggle => "Record voice / dictate".into(),
     }
 }

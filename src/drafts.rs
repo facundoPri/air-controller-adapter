@@ -26,7 +26,7 @@ impl Drafts {
             .get(key)
             .is_some_and(|(baseline, text)| baseline != model && text != model && text != baseline)
         {
-            Err("La configuración cambió mientras editabas. Copiá tu borrador y usá Descartar borrador para cargar la versión actual antes de guardar.".into())
+            Err("The configuration changed while you were editing. Copy your draft and use Discard draft to load the current version before saving.".into())
         } else {
             Ok(())
         }

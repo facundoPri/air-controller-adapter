@@ -609,7 +609,7 @@ impl StudioApp {
                 "The Air mouse button sends no event of its own, so it cannot be learned. Its effect is inferred from mouse reports.",
             )
         } else if !listening && !learning_any {
-            Some("Studio todavía no puede leer el control. Revisá el estado en Conexión.")
+            Some("Studio cannot read the remote yet. Check its status in Connection.")
         } else {
             None
         };
@@ -630,13 +630,13 @@ impl StudioApp {
                         let p = this.profile;
                         let result = this.studio.assign_action(b, p, action.clone()).map(|_| {
                             format!(
-                                "Guardado: {} · {} → {label}. {}",
+                                "Saved: {} · {} → {label}. {}",
                                 button_name(b),
                                 profile_name(p),
                                 if this.studio.button_identified(b, p) {
                                     ""
                                 } else {
-                                    "La señal está asignada a otro botón; revisá las opciones avanzadas."
+                                    "This input is assigned to another button; check the advanced options."
                                 }
                             )
                         });
@@ -646,7 +646,7 @@ impl StudioApp {
             });
 
         let editor = self.action_editor.clone();
-        let source = source_text(&studio.source_label(b, profile));
+        let source = studio.source_label(b, profile);
         let last_seen = self.last_seen;
 
         div()
@@ -696,11 +696,11 @@ impl StudioApp {
                     )
                     .when_some(self.message("action").cloned(), |d, m| d.child(notice(&m)))
                     .when(!studio.button_identified(b, profile) || learning_any, |d| d
-                    .child(eyebrow("IDENTIFICAR ESTE BOTÓN UNA VEZ"))
+                    .child(eyebrow("IDENTIFY THIS BUTTON ONCE"))
                     .child(caption(if studio.button_identified(b, profile) {
-                        "Identificado. Podés elegir otra función abajo."
+                        "Identified. You can choose another action below."
                     } else {
-                        "Pulsá Identificar botón y luego ese botón del control una vez."
+                        "Click Identify button, then press that button on the remote once."
                     }))
                     // Identify the physical source before choosing an action.
                     .child(
@@ -711,11 +711,11 @@ impl StudioApp {
                             .child(
                                 Button::new("learn")
                                     .label(if learning_this {
-                                        "Cancelar identificación"
+                                        "Cancel identification"
                                     } else if learning_any {
-                                        "Cancelar identificación"
+                                        "Cancel identification"
                                     } else {
-                                        if studio.button_identified(b, profile) { "Volver a identificar" } else { "Identificar botón" }
+                                        if studio.button_identified(b, profile) { "Identify again" } else { "Identify button" }
                                     })
                                     .small()
                                     .when(!learning_any, |b| b.primary())
@@ -723,14 +723,14 @@ impl StudioApp {
                                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                         if this.studio.learning.is_some() {
                                             this.studio.cancel_learning();
-                                            this.report("action", Ok("Identificación cancelada".into()));
+                                            this.report("action", Ok("Identification canceled".into()));
                                         } else {
                                             this.messages.remove("rules");
                                             this.studio.learn(this.selected, this.profile);
                                             this.report(
                                                 "action",
                                                 Ok(format!(
-                                                    "Pulsá {} una vez en el control (Esc cancela)",
+                                                    "Press {} once on the remote (Esc to cancel)",
                                                     button_name(this.selected)
                                                 )),
                                             );
@@ -745,7 +745,7 @@ impl StudioApp {
                                 .text_size(px(12.5))
                                 .text_color(rgb(WARN))
                                 .child(format!(
-                                    "Esperando {} en el control… (Esc cancela)",
+                                    "Waiting for {} on the remote… (Esc to cancel)",
                                     button_name(b)
                                 )),
                         )
@@ -754,12 +754,12 @@ impl StudioApp {
                         d.child(caption(why))
                     })
                     )
-                    .child(eyebrow("FUNCIÓN DEL BOTÓN"))
-                    .child(caption("Elegí una función para este perfil. Se guarda automáticamente. El MR-01 ya incluye su mapa de botones."))
+                    .child(eyebrow("BUTTON ACTION"))
+                    .child(caption("Choose an action for this profile. It saves automatically. The MR-01 button map is already included."))
                     .child(div().flex().flex_wrap().gap(px(5.)).children(presets))
                     .child(caption(ready_for_air::actions::guidance(&current, studio.config.transcription.is_some())))
                     .when(ready_for_air::actions::uses_zoom(&current), |d| d.child(
-                        Button::new("zoom-settings").label("Abrir ajustes de Zoom").small().ghost()
+                        Button::new("zoom-settings").label("Open Zoom settings").small().ghost()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.open_url("x-apple.systempreferences:com.apple.preference.universalaccess?Zoom");
                             }))
@@ -767,28 +767,28 @@ impl StudioApp {
                     .when(current == Action::VoiceToggle, |d| d.child(caption(studio.audio_status.clone())))
                     .when_some(studio.last_action_result.as_ref(), |d, result| d.child(notice(result)))
                     .child(caption(studio.engine_status()))
-                    .child(eyebrow("OPCIONES AVANZADAS"))
+                    .child(eyebrow("ADVANCED OPTIONS"))
                     .when(studio.button_identified(b, profile) && !learning_any, |d| d.child(
-                        Button::new("relearn").label("Volver a identificar").small().ghost()
+                        Button::new("relearn").label("Identify again").small().ghost()
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.studio.learn(this.selected, this.profile); cx.notify();
                             }))
                     ))
-                    .child(Button::new("test-action").label("Probar función ahora").small().ghost()
+                    .child(Button::new("test-action").label("Test action now").small().ghost()
                         .disabled(matches!(current, Action::Default | Action::Disabled))
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            let r = this.studio.test_action(b, profile).map(|_| "Función solicitada · resultado en Activity".into());
+                            let r = this.studio.test_action(b, profile).map(|_| "Action requested · see Activity for the result".into());
                             this.report("rules", r); cx.notify();
                         })))
                     .when_some(self.message("rules").cloned(), |d,m|d.child(notice(&m)))
                     // Custom JSON
-                    .child(Button::new("reload").label("Recargar archivo").small().ghost().on_click(
+                    .child(Button::new("reload").label("Reload file").small().ghost().on_click(
                         cx.listener(|this, _, _, cx| {
-                            let r = this.studio.reload().map(|_| "Archivo recargado".into());
+                            let r = this.studio.reload().map(|_| "File reloaded".into());
                             this.report("action",r); cx.notify();
                         })))
                     .child(eyebrow("CUSTOM ACTION (JSON)"))
-                    .child(Button::new("discard-action-draft").label("Descartar borrador").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+                    .child(Button::new("discard-action-draft").label("Discard draft").small().ghost().on_click(cx.listener(|this, _, _, cx| {
                         this.drafts.discard(&this.action_editor_key); this.action_editor_key.clear(); cx.notify();
                     })))
                     .child(caption(
@@ -805,7 +805,7 @@ impl StudioApp {
                     .child(
                         div().flex().gap_2().child(
                             Button::new("apply-json")
-                                .label("Guardar acción JSON")
+                                .label("Save action JSON")
                                 .disabled(b == ButtonId::MouseMode)
                                 .small()
                                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -823,7 +823,7 @@ impl StudioApp {
                                                 this.selected,
                                                 this.profile,
                                                 action,
-                                            ).map(|_|format!("Guardado: {label}"))
+                                            ).map(|_|format!("Saved: {label}"))
                                         }
                                         Err(e) => Err(format!("Invalid action JSON: {e}")),
                                     });
@@ -834,7 +834,7 @@ impl StudioApp {
                         ),
                     )
                     .when_some(self.message("json").cloned(), |d, m| d.child(notice(&m)))
-                    .child(caption("El control funciona automáticamente al abrir Studio. Pausar control, arriba, pausa todas las funciones a la vez."))
+                    .child(caption("The remote works automatically when Studio opens. Pause remote, above, pauses all actions at once."))
                     .when_some(self.message("rules").cloned(), |d, m| d.child(notice(&m))),
             )
     }

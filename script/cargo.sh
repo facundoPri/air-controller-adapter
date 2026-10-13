@@ -10,13 +10,13 @@ if [ -z "$TOOLCHAIN" ] && [ -f "$ROOT/.tools/rust-toolchain-path" ]; then
 fi
 if [ -n "$TOOLCHAIN" ]; then
   if [ ! -x "$TOOLCHAIN/bin/cargo" ]; then
-    echo "READY_AIR_RUST_TOOLCHAIN no contiene bin/cargo ejecutable" >&2
+    echo "READY_AIR_RUST_TOOLCHAIN does not contain an executable bin/cargo" >&2
     exit 1
   fi
   export PATH="$TOOLCHAIN/bin:$PATH"
 fi
 if ! command -v cargo >/dev/null 2>&1; then
-  echo "Instalá Rust y agregá cargo a PATH, o indicá READY_AIR_RUST_TOOLCHAIN. Para macOS también necesitás Xcode/Command Line Tools." >&2
+  echo "Install Rust and add cargo to PATH, or set READY_AIR_RUST_TOOLCHAIN. macOS also requires Xcode/Command Line Tools." >&2
   exit 1
 fi
 cd "$ROOT"

@@ -1,14 +1,14 @@
-# Configuración de ACA Studio
+# ACA Studio configuration
 
-La UI y el motor comparten `studio::Config`, versionado con `version: 1`. [config.example.json](config.example.json) es la salida real del modelo por defecto (`cargo run --example configuration`), con fuentes MR-01 integradas y funciones originales por defecto. Guarda las acciones por botón en `normal` y `air_mouse`.
+The UI and engine share `studio::Config`, versioned as `version: 1`. [config.example.json](config.example.json) is the actual default model output (`cargo run --example configuration`), with built-in MR-01 sources and original actions by default. Each button stores actions in `normal` and `air_mouse`.
 
-Los cambios se guardan en `~/Library/Application Support/ReadyForAirLab/config.json`; se conserva ese directorio para continuar usando los datos del laboratorio. Guardar crea primero un archivo temporal y preserva `config.previous.json`. Un JSON inválido no se reemplaza silenciosamente: corregilo y recargá. Versiones futuras, botones duplicados, fuentes ambiguas y macros demasiado profundas se rechazan.
+Changes are saved to `~/Library/Application Support/ReadyForAirLab/config.json`. The historical directory is preserved for compatibility with existing data. Saving writes a temporary file first and preserves `config.previous.json`. Invalid JSON is not silently replaced: fix it and reload. Future schema versions, duplicate buttons, ambiguous sources, and deeply nested macros are rejected.
 
-El MR-01 incluye un [mapa integrado de botones](mr01-button-map.md). Las configuraciones anteriores con fuentes vacías se completan automáticamente, respetando las señales que el usuario ya haya reasignado. Elegí el botón en 3D y su función: se guarda y usa en la siguiente pulsación, sin identificación ni reconexión. La identificación manual queda en opciones avanzadas para variantes del firmware. El botón físico de modo mouse no emite una pulsación independiente conocida y no puede reasignarse; sus paquetes de movimiento seleccionan el perfil Air mouse. La asociación de Atrás con F1 todavía requiere una comprobación física aislada.
+The MR-01 has a [built-in button map](mr01-button-map.md). Older configurations with empty sources are filled automatically, respecting signals you have already reassigned. Select a button in 3D and choose an action: it is saved and used on the next press, without identification or reconnection. Manual identification remains an advanced option for firmware variants. The physical mouse-mode button has no known independent press event and cannot be remapped; its movement packets select the Air mouse profile. The Back-to-F1 association still needs an isolated physical check.
 
-## Acciones
+## Actions
 
-Cada `normal` o `air_mouse` acepta uno de estos objetos:
+Each `normal` or `air_mouse` property accepts one of these objects:
 
 ```json
 {"type":"default"}
@@ -16,36 +16,36 @@ Cada `normal` o `air_mouse` acepta uno de estos objetos:
 {"type":"shortcut","key":"c","modifiers":["command"]}
 {"type":"system","command":"mission_control"}
 {"type":"scroll","x":0,"y":-50}
-{"type":"apple_script","script":"display notification \"Hola\" with title \"Ready For Air\""}
-{"type":"shell","command":"/usr/bin/say Hola"}
+{"type":"apple_script","script":"display notification \"Hello\" with title \"ACA\""}
+{"type":"shell","command":"/usr/bin/say Hello"}
 {"type":"macro","steps":[{"type":"shortcut","key":"c","modifiers":["command"]},{"type":"system","command":"mission_control"}]}
 {"type":"voice_toggle"}
 ```
 
-Son ejemplos independientes, no un documento JSON único. Los atajos admiten `command`, `control`, `option`, `shift`; consultá `actions.rs` para las teclas admitidas. Los scripts son código elegido por el usuario y se ejecutan con sus permisos. Editarlos, seleccionarlos o guardarlos no los ejecuta.
+These are separate examples, not one JSON document. Shortcuts accept `command`, `control`, `option`, and `shift`; see `actions.rs` for supported keys. Scripts are user-selected code and run with your permissions. Editing, selecting, or saving them does not execute them.
 
-Las acciones de sistema disponibles incluyen `mission_control`, `app_expose`, `show_desktop`, `launchpad`, `volume_up`, `volume_down`, `mute`, `zoom_in`, `zoom_out`, `zoom_toggle`, `display_sleep`, `sleep` y `lock_screen`. Zoom usa los atajos de accesibilidad configurados en macOS; no activa esa preferencia automáticamente. `launchpad` conserva su nombre en JSON, pero abre Apps.app en Tahoe y Launchpad.app en versiones anteriores. Mostrar escritorio y Ventanas de la aplicación utilizan el lanzador de Mission Control del sistema; los argumentos 1 y 2 fueron inspeccionados en macOS 26.6.2 y requieren revalidación en nuevas versiones.
+System actions include `mission_control`, `app_expose`, `show_desktop`, `launchpad`, `volume_up`, `volume_down`, `mute`, `zoom_in`, `zoom_out`, `zoom_toggle`, `display_sleep`, `sleep`, and `lock_screen`. Zoom uses macOS Accessibility keyboard shortcuts; it does not enable that preference automatically. `launchpad` retains its JSON name but opens Apps.app on Tahoe and Launchpad.app on earlier versions. Show desktop and App windows use the system Mission Control launcher; arguments 1 and 2 were inspected on macOS 26.6.2 and need revalidation on newer versions.
 
-La selección del perfil en el editor solo cambia qué configuración editás. La actividad del puntero se infiere de paquetes HID recientes. Las flechas marcan el retorno al funcionamiento normal; al cesar los paquetes durante `mouse_idle_ms` (1500 por defecto) se vuelve al perfil Normal como política de la app. No existe un comando comprobado para reactivar el sensor desde la Mac.
+Selecting an editor profile only changes the configuration being edited. Pointer activity is inferred from recent HID packets. Arrows mark the return to Normal; after `mouse_idle_ms` (1500 by default) without mouse packets, the app falls back to Normal. No verified command can reactivate the sensor from the Mac.
 
-## Usar las asignaciones
+## Using mappings
 
-Al abrir Studio, el control emparejado se detecta y las acciones se habilitan automáticamente cuando los permisos y la captura están disponibles. Si necesita autenticación de administrador, Studio presenta un único diálogo de macOS; no abre Terminal. Cancelar no vuelve a abrir el diálogo automáticamente.
+When Studio opens, it detects a paired remote and enables actions automatically once permissions and capture are available. If administrator authentication is needed, Studio presents one macOS dialog; it does not open Terminal. Canceling does not automatically reopen the dialog.
 
-1. Seleccioná un botón del modelo 3D y el perfil Normal o Air mouse.
-2. Elegí su función. Se guarda y aplica automáticamente; no hay activación por botón.
-3. Usá el botón físico. No hay un paso de aprendizaje en el flujo habitual. **Volver a identificar** es solo una opción avanzada si una variante del control usa otra señal.
+1. Select a button on the 3D model and choose the Normal or Air mouse profile.
+2. Choose an action. It saves and applies automatically; there is no per-button activation.
+3. Press the physical button. Normal setup does not require learning. **Identify again** is an advanced option for firmware variants that use another signal.
 
-**Pausar control / Reanudar control**, en la cabecera, afecta a todas las funciones. Para scripts/macros, usá **Guardar acción JSON** en Opciones avanzadas. Guardar nunca ejecuta la acción seleccionada y no requiere que el lector esté activo. Si falla la escritura o hay cambios externos en el archivo, no se reemplaza la configuración anterior.
+**Pause remote / Resume remote** in the header affects all actions. For scripts/macros, use **Save action JSON** in Advanced options. Saving never executes the selected action and does not require an active reader. If writing fails or the file has changed externally, the previous configuration is preserved.
 
-La captura sigue siendo una sesión de hasta 30 minutos y termina al cerrar Studio. Si caduca o se cancela la autorización, **Reanudar lector** permite renovarla; no hay una cadena de solicitudes automáticas. Esto aún no instala un servicio permanente. El lector requiere Monitoreo de entrada; Studio, Monitoreo de entrada y Accesibilidad. Dejá Modify events desactivado para el MR-01 en Karabiner para evitar competir por el dispositivo.
+Capture sessions last up to 30 minutes and end when Studio closes. If a session expires or authorization is canceled, **Resume reader** renews it; authorization requests do not repeat automatically. There is no permanent service. Capture needs Input Monitoring; Studio needs Input Monitoring and Accessibility. Disable Modify events for the MR-01 in Karabiner to avoid competing for the device.
 
-Ver [motor nativo y límites](native-engine.md).
+See [native engine and limitations](native-engine.md).
 
-Para voz, elegí una entrada de la Mac o auriculares y configurá `transcription` según [voice-setup.md](voice-setup.md). Una pulsación inicia la grabación y otra la detiene. El texto se guarda; solo se intenta insertarlo si sigue activa la misma aplicación de destino y la asignación continúa habilitada.
+For voice, select a Mac or headset input and configure `transcription` using [voice-setup.md](voice-setup.md). One press starts recording and another stops it. Text is saved; insertion is attempted only if the same target application remains active and the mapping is still enabled.
 
-## Borradores y ejecución acotada
+## Drafts and execution limits
 
-Cada botón/perfil conserva su borrador JSON al navegar. Un cambio independiente (por ejemplo, micrófono) no reemplaza un JSON editado. Si cambió el modelo base, se rechaza guardar encima sin revisión; **Descartar borrador y recargar** es explícito. La selección de audio persiste antes de cambiar el modelo en memoria.
+Each button/profile keeps its JSON draft while you navigate. An independent change, such as the microphone selection, does not replace edited JSON. If the base model changes, saving over it is rejected pending review; **Discard draft and reload** is explicit. Audio selection is persisted before changing the in-memory model.
 
-Una pulsación espera como máximo 500 ms antes de comenzar a ejecutarse. Una macro que ya comenzó conserva su presupuesto de 15 segundos. Pausar, editar configuración o cerrar Studio cancela el trabajo anterior. Al terminar un shell se termina también su grupo: procesos desacoplados deliberadamente no forman parte del contrato de acciones. La transcripción comparte esta limpieza y se cancela con el mismo ciclo de vida.
+A button press waits at most 500 ms before execution starts. A macro already in progress retains its 15-second budget. Pausing, editing configuration, or closing Studio cancels earlier work. When a shell finishes, its process group is terminated too; deliberately detached processes are outside the action contract. Transcription uses the same cleanup and cancellation lifecycle.

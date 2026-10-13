@@ -17,15 +17,15 @@ const VISIBLE_LOGS: usize = 400;
 fn category(category: &str) -> (String, u32) {
     let (label, color) = match category {
         "packet" => ("PACKET", 0x6b8afd),
-        "modo" => ("MODE", ACCENT),
-        "aprender" => ("LEARN", WARN),
-        "motor" => ("ENGINE", 0xc084fc),
+        "mode" => ("MODE", ACCENT),
+        "learn" => ("LEARN", WARN),
+        "engine" => ("ENGINE", 0xc084fc),
         "audio" => ("AUDIO", OK),
-        "voz" => ("VOICE", OK),
+        "voice" => ("VOICE", OK),
         "config" => ("CONFIG", 0x9ad1ff),
-        "sistema" => ("SYSTEM", MUTED),
+        "system" => ("SYSTEM", MUTED),
         "routing" => ("BUTTON", WARN),
-        "acción" => ("ACTION", ACCENT),
+        "action" => ("ACTION", ACCENT),
         "error" => ("ERROR", DANGER),
         other => return (other.to_uppercase(), MUTED),
     };

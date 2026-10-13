@@ -98,11 +98,11 @@ pub fn unsupported_original(output: &Output) -> Option<String> {
         } => None,
         Output::Consumer(usage) if !matches!(usage, 0xe9 | 0xea | 0xe2 | 0xcd | 0xb5 | 0xb6) => {
             Some(format!(
-                "Multimedia {usage:04X}: sin función original en macOS. Asignale una función; el resto del control sigue activo."
+                "Consumer usage {usage:04X} has no original function on macOS. Assign an action; the rest of the remote remains active."
             ))
         }
         Output::Key { usage, down: true } if keycode(*usage).is_none() => Some(format!(
-            "Tecla HID {usage:02X}: sin equivalente en macOS. Asignale una función."
+            "HID key {usage:02X} has no macOS equivalent. Assign an action."
         )),
         Output::Key { usage, down: false } if keycode(*usage).is_none() => Some(String::new()),
         _ => None,

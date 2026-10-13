@@ -71,20 +71,20 @@ impl ButtonId {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Home => "Inicio",
-            Self::Experiences => "Experiencias",
-            Self::Apps => "Aplicaciones",
-            Self::Back => "Atrás",
-            Self::Up => "Arriba",
-            Self::Down => "Abajo",
-            Self::Left => "Izquierda",
-            Self::Right => "Derecha",
+            Self::Home => "Home",
+            Self::Experiences => "Experiences",
+            Self::Apps => "Apps",
+            Self::Back => "Back",
+            Self::Up => "Up",
+            Self::Down => "Down",
+            Self::Left => "Left",
+            Self::Right => "Right",
             Self::Ok => "OK",
-            Self::Capture => "Captura",
+            Self::Capture => "Capture",
             Self::MouseMode => "Air mouse",
-            Self::VolumeDown => "Volumen −",
-            Self::VolumeUp => "Volumen +",
-            Self::Mute => "Silencio",
+            Self::VolumeDown => "Volume −",
+            Self::VolumeUp => "Volume +",
+            Self::Mute => "Mute",
         }
     }
     pub fn is_arrow(self) -> bool {
@@ -120,7 +120,7 @@ impl MouseMode {
     pub fn label(self) -> &'static str {
         match self {
             Self::Normal => "Normal",
-            Self::Active => "Air mouse activo",
+            Self::Active => "Air mouse active",
         }
     }
 }
@@ -148,9 +148,9 @@ pub enum InputSource {
 impl std::fmt::Display for InputSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Keyboard(n) => write!(f, "Tecla HID {n:02X}"),
-            Self::Consumer(n) => write!(f, "Multimedia {n:04X}"),
-            Self::Mouse(n) => write!(f, "Botón mouse {n}"),
+            Self::Keyboard(n) => write!(f, "HID key {n:02X}"),
+            Self::Consumer(n) => write!(f, "Consumer {n:04X}"),
+            Self::Mouse(n) => write!(f, "Mouse button {n}"),
         }
     }
 }
@@ -188,33 +188,33 @@ impl SystemAction {
     pub fn label(self) -> &'static str {
         match self {
             Self::MissionControl => "Mission Control",
-            Self::AppExpose => "Ventanas de la aplicación",
-            Self::ShowDesktop => "Mostrar escritorio",
-            Self::Launchpad => "Aplicaciones",
-            Self::VolumeUp => "Subir volumen",
-            Self::VolumeDown => "Bajar volumen",
-            Self::Mute => "Silenciar",
-            Self::ZoomIn => "Acercar zoom",
-            Self::ZoomOut => "Alejar zoom",
-            Self::ZoomToggle => "Activar / desactivar zoom de pantalla",
-            Self::DisplaySleep => "Apagar pantalla",
-            Self::Sleep => "Suspender Mac",
-            Self::LockScreen => "Bloquear pantalla",
+            Self::AppExpose => "App windows",
+            Self::ShowDesktop => "Show desktop",
+            Self::Launchpad => "Apps",
+            Self::VolumeUp => "Volume up",
+            Self::VolumeDown => "Volume down",
+            Self::Mute => "Mute",
+            Self::ZoomIn => "Zoom in",
+            Self::ZoomOut => "Zoom out",
+            Self::ZoomToggle => "Toggle screen zoom",
+            Self::DisplaySleep => "Display sleep",
+            Self::Sleep => "Sleep Mac",
+            Self::LockScreen => "Lock screen",
         }
     }
 }
 impl Action {
     pub fn label(&self) -> String {
         match self {
-            Self::Default => "Función original".into(),
-            Self::Disabled => "Desactivado".into(),
+            Self::Default => "Original function".into(),
+            Self::Disabled => "Disabled".into(),
             Self::Shortcut { key, modifiers } => format!("{} {key}", modifiers.join(" + ")),
             Self::System { command } => command.label().into(),
             Self::Scroll { x, y } => format!("Scroll {x}, {y}"),
             Self::AppleScript { .. } => "AppleScript".into(),
-            Self::Shell { .. } => "Comando personalizado".into(),
-            Self::Macro { steps } => format!("Macro · {} pasos", steps.len()),
-            Self::VoiceToggle => "Grabar / transcribir voz".into(),
+            Self::Shell { .. } => "Custom command".into(),
+            Self::Macro { steps } => format!("Macro · {} steps", steps.len()),
+            Self::VoiceToggle => "Record / transcribe voice".into(),
         }
     }
     pub fn presets() -> Vec<(String, Self)> {
@@ -345,12 +345,12 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if self.version != 1 {
             return Err(format!(
-                "Versión de configuración no soportada: {}",
+                "Unsupported configuration version: {}",
                 self.version
             ));
         }
         if !(500..=30000).contains(&self.mouse_idle_ms) {
-            return Err("mouse_idle_ms debe estar entre 500 y 30000".into());
+            return Err("mouse_idle_ms must be between 500 and 30000".into());
         }
         if self.buttons.len() != 14
             || self
@@ -362,7 +362,7 @@ impl Config {
                 != 14
         {
             return Err(
-                "La configuración debe contener exactamente los 14 botones, sin duplicados".into(),
+                "Configuration must contain exactly all 14 buttons, without duplicates".into(),
             );
         }
         for profile in [Profile::Normal, Profile::AirMouse] {
@@ -384,7 +384,7 @@ impl Config {
                     };
                     if !valid || !seen.insert(s.clone()) {
                         return Err(format!(
-                            "Señal inválida o repetida en {}: {s}",
+                            "Invalid or duplicate input in {}: {s}",
                             profile.label()
                         ));
                     }
@@ -393,7 +393,7 @@ impl Config {
         }
         if let Some(t) = &self.transcription {
             if t.program.trim().is_empty() || !t.args.iter().any(|a| a.contains("{audio}")) {
-                return Err("Transcripción: indicar programa y argumento {audio}".into());
+                return Err("Transcription: specify a program and an {audio} argument".into());
             }
         }
         Ok(())
@@ -411,32 +411,32 @@ fn validate_action(a: &Action, depth: usize) -> Result<(), String> {
         crate::actions::validate_definition(a)?;
     }
     if depth > 4 {
-        return Err("Macro demasiado anidada (máximo 4 niveles)".into());
+        return Err("Macro nesting is too deep (maximum 4 levels)".into());
     }
     match a {
         Action::Macro { steps } => {
             if steps.is_empty() || steps.len() > 32 {
-                return Err("Una macro admite 1–32 pasos".into());
+                return Err("A macro supports 1–32 steps".into());
             }
             for s in steps {
                 if matches!(s, Action::VoiceToggle) {
-                    return Err("La grabación debe asignarse fuera de macros".into());
+                    return Err("Recording must be assigned outside macros".into());
                 }
                 validate_action(s, depth + 1)?;
             }
         }
         Action::Shortcut { key, modifiers } => {
             if key.is_empty() || key.len() > 64 || modifiers.len() > 4 {
-                return Err("Atajo inválido".into());
+                return Err("Invalid shortcut".into());
             }
         }
         Action::Shell { command } | Action::AppleScript { script: command } => {
             if command.trim().is_empty() || command.len() > 16384 {
-                return Err("El script debe contener entre 1 y 16384 bytes".into());
+                return Err("Script must contain between 1 and 16384 bytes".into());
             }
         }
         Action::Scroll { x, y } if x.unsigned_abs() > 100 || y.unsigned_abs() > 100 => {
-            return Err("Scroll fuera de rango (±100)".into());
+            return Err("Scroll out of range (±100)".into());
         }
         _ => {}
     }
@@ -458,7 +458,7 @@ fn stamp() -> String {
 }
 pub(crate) fn atomic_json(path: &std::path::Path, value: &impl Serialize) -> Result<(), String> {
     use std::io::Write;
-    let parent = path.parent().ok_or("Ruta sin directorio")?;
+    let parent = path.parent().ok_or("Path has no parent directory")?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     let temp = parent.join(format!(".ready-air-{}-{}.tmp", std::process::id(), stamp()));
@@ -559,7 +559,7 @@ impl Studio {
             while let Ok((a, epoch, at)) = work_req.recv() {
                 if generation.load(Ordering::Relaxed) == epoch {
                     let result = if at.elapsed() >= Duration::from_millis(500) {
-                        Err("Pulsación vencida en la cola; descartada".into())
+                        Err("Queued button press expired; discarded".into())
                     } else {
                         crate::actions::execute_cancellable(&a, &generation, epoch)
                     }
@@ -580,14 +580,14 @@ impl Studio {
             capture_service: false,
             capture_access: Default::default(),
             capture_verified: false,
-            bluetooth_state: "Sin consultar; Buscar comprueba el adaptador".into(),
+            bluetooth_state: "Not checked; Discover checks the adapter".into(),
             candidates: vec![],
             reader_running: false,
             direct_mapping: Arc::new(std::sync::RwLock::new(None)),
             device_choice: Arc::new(std::sync::RwLock::new(None)),
             reader_thread: None,
             packet_count: 0,
-            last_packet: "Sin paquetes".into(),
+            last_packet: "No packets".into(),
             mode: MouseMode::Normal,
             learning: None,
             learn_result: None,
@@ -595,7 +595,7 @@ impl Studio {
             audio_inputs: vec![],
             audio_refreshing: false,
             recording: false,
-            audio_status: "Micrófono inactivo".into(),
+            audio_status: "Microphone idle".into(),
             actions_enabled: false,
             actions_requested: true,
             engine_error: None,
@@ -604,7 +604,7 @@ impl Studio {
             launcher: Default::default(),
             auto_launch: start_io,
             awaiting_release: false,
-            status: "Conectá tu control para comenzar".into(),
+            status: "Connect your remote to get started".into(),
             root,
             ble_session: false,
             tx,
@@ -641,7 +641,7 @@ impl Studio {
         s.refresh_audio_inputs();
         match crate::instance::Server::start(&s.root) {
             Ok(server) => s.instance = Some(server),
-            Err(e) => s.log("motor", e),
+            Err(e) => s.log("engine", e),
         }
         if s.instance.is_some() {
             s.start_listening();
@@ -670,7 +670,7 @@ impl Studio {
     }
     pub fn save_config(&mut self, mut next: Config) -> Result<(), String> {
         if self.config_error {
-            return Err("El JSON existente es inválido; corregilo y recargá antes de guardar. No se sobrescribió.".into());
+            return Err("The existing JSON is invalid; fix it and reload before saving. It has not been overwritten.".into());
         }
         next.validate()?;
         next.fill_mr01_sources();
@@ -683,8 +683,8 @@ impl Studio {
         if disk != self.disk_config {
             self.suspend_actions();
             self.engine_error =
-                Some("config.json cambió fuera de la app. Recargá el archivo.".into());
-            return Err("config.json cambió fuera de la app. Recargá antes de guardar para conservar esos cambios.".into());
+                Some("config.json changed outside the app. Reload the file.".into());
+            return Err("config.json changed outside the app. Reload before saving to preserve those changes.".into());
         }
         atomic_json(&self.config_path(), &next)?;
         self.config = next;
@@ -692,7 +692,7 @@ impl Studio {
         self.publish_mapping();
         self.disk_config =
             Some(serde_json::to_vec_pretty(&self.config).map_err(|e| e.to_string())?);
-        self.log("config", "Configuración guardada");
+        self.log("config", "Configuration saved");
         Ok(())
     }
     pub fn reload(&mut self) -> Result<(), String> {
@@ -724,14 +724,14 @@ impl Studio {
         action: Action,
     ) -> Result<(), String> {
         if button == ButtonId::MouseMode {
-            return Err("Air mouse no emite una pulsación asignable. Editá las acciones del perfil Air mouse para los otros botones.".into());
+            return Err("Air mouse does not emit an assignable button press. Edit the Air mouse profile actions for the other buttons.".into());
         }
         let mut next = self.config.clone();
         let b = next
             .buttons
             .iter_mut()
             .find(|b| b.button == button)
-            .ok_or("Botón no encontrado")?;
+            .ok_or("Button not found")?;
         if profile == Profile::Normal {
             b.normal = action
         } else {
@@ -761,26 +761,29 @@ impl Studio {
     }
     fn activation_error_with_accessibility(&self, trusted: bool) -> Option<String> {
         if self.learning.is_some() {
-            return Some("Terminá de identificar el botón antes de activar las acciones.".into());
+            return Some("Finish identifying the button before enabling actions.".into());
         }
         if self.config_error {
-            return Some("Corregí el archivo de configuración y recargalo. Tus cambios no fueron sobrescritos.".into());
+            return Some(
+                "Fix the configuration file and reload it. Your changes have not been overwritten."
+                    .into(),
+            );
         }
         if let Err(e) = self.config.validate() {
             return Some(e);
         }
         if !self.listening {
             return Some(if self.connected {
-                "El control está conectado pero Studio no puede leerlo. Revisá el detalle en Conexión.".into()
+                "The remote is connected but Studio cannot read it. Check the details in Connection.".into()
             } else {
-                "No se detecta el control. Despertalo o conectalo desde Conexión.".into()
+                "Remote not detected. Wake it up or connect it from Connection.".into()
             });
         }
         if !self.capture_service {
-            return Some("El lector de acciones no está activo (las sesiones duran hasta 30 minutos). Iniciá el lector y luego activá las acciones. Tu configuración sigue guardada.".into());
+            return Some("The action reader is not active (sessions last up to 30 minutes). Start the reader and then enable actions. Your configuration is still saved.".into());
         }
         if !trusted {
-            return Some("Falta Accesibilidad para Studio en Ajustes → Privacidad y seguridad. La configuración se puede guardar igual.".into());
+            return Some("Studio needs Accessibility in System Settings → Privacy & Security. You can still save your configuration.".into());
         }
         None
     }
@@ -807,7 +810,7 @@ impl Studio {
             .map(|b| sources(b, profile))
             .unwrap_or(&[]);
         if s.is_empty() {
-            "Sin identificar · aprender botón".into()
+            "Not identified · learn button".into()
         } else {
             s.iter()
                 .map(ToString::to_string)
@@ -820,7 +823,7 @@ impl Studio {
             return;
         }
         if self.ble_session {
-            self.log("Bluetooth", "La conexión Bluetooth ya está abierta. Usá Iniciar lectura para volver a leer el control.");
+            self.log("Bluetooth", "The Bluetooth connection is already open. Use Start listening to read the remote again.");
             return;
         }
         self.connecting = true;
@@ -873,7 +876,7 @@ impl Studio {
         self.awaiting_release = true;
         self.suspend_actions();
         if button == ButtonId::MouseMode {
-            self.log("aprender","El botón Air mouse no emitió una señal propia en las pruebas. Detectamos su actividad por reportes de mouse.");
+            self.log("learn","The Air mouse button did not emit its own input during testing. Activity is detected from mouse reports.");
             return;
         }
         if !self.listening {
@@ -882,8 +885,8 @@ impl Studio {
         self.learning = Some((button, profile));
         self.learn_started = Some(Instant::now());
         self.log(
-            "aprender",
-            format!("Pulsá {} una vez · {}", button.label(), profile.label()),
+            "learn",
+            format!("Press {} once · {}", button.label(), profile.label()),
         );
     }
     pub fn cancel_learning(&mut self) {
@@ -907,7 +910,7 @@ impl Studio {
             if self.recording && self.voice_for_transcription {
                 self.stop_audio.store(true, Ordering::Relaxed);
                 self.voice_for_transcription = false;
-                self.audio_status = "Deteniendo dictado…".into();
+                self.audio_status = "Stopping dictation…".into();
             }
         }
         let error = enabled
@@ -915,7 +918,7 @@ impl Studio {
             .flatten();
         self.actions_enabled = enabled && error.is_none();
         if let Some(error) = error {
-            self.log("motor", error);
+            self.log("engine", error);
         }
         self.publish_mapping();
     }
@@ -943,21 +946,19 @@ impl Studio {
         self.actions_requested = true;
         self.engine_error = None;
         if self.capture_service || self.launcher.pending() {
-            return Ok("Preparando el control…".into());
+            return Ok("Preparing the remote…".into());
         }
         let default_root = PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
             .join("Library/Application Support/ReadyForAirLab");
         self.launcher.attempted = true;
         if self.root != default_root {
-            return Err(
-                "El arranque automático está deshabilitado en directorios de prueba".into(),
-            );
+            return Err("Automatic startup is disabled in test directories".into());
         }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let helper = crate::session::packaged_helper(&exe)?;
         self.launcher
             .start(&helper, &self.root.join("capture.sock"))?;
-        Ok("Autorizá el diálogo de macOS para usar el control. No se abre Terminal.".into())
+        Ok("Approve the macOS dialog to use the remote. No Terminal window is opened.".into())
     }
     fn reconcile_engine(&mut self, trusted: bool) {
         if !self.actions_requested
@@ -974,7 +975,7 @@ impl Studio {
             if self.auto_launch && !self.launcher.attempted {
                 if let Err(e) = self.start_capture_service() {
                     self.engine_error = Some(e.clone());
-                    self.log("motor", e);
+                    self.log("engine", e);
                 }
             }
         } else if !self.actions_enabled {
@@ -986,39 +987,39 @@ impl Studio {
             return e.clone();
         }
         if !self.actions_requested {
-            return "Control pausado".into();
+            return "Remote paused".into();
         }
         if self.learning.is_some() || self.awaiting_release {
-            return "Identificando botón · soltalo para continuar".into();
+            return "Identifying button · release it to continue".into();
         }
         if !crate::native_input::trusted() {
-            return "Falta Accesibilidad para Studio · abrí Conexión".into();
+            return "Studio needs Accessibility · open Connection".into();
         }
         if let Some(error) = &self.reader_error {
             return error.clone();
         }
         if !self.listening {
             if self.connected {
-                return "Control presente, lectura bloqueada · revisá Conexión".into();
+                return "Remote present, reading blocked · check Connection".into();
             }
-            return "Esperando el control · revisá Conexión si no aparece".into();
+            return "Waiting for the remote · check Connection if it does not appear".into();
         }
         if self.native_active && self.actions_enabled {
-            return "Control listo · funciones activas".into();
+            return "Remote ready · actions active".into();
         }
         if self.capture_starting() {
-            return "Esperando autorización de macOS…".into();
+            return "Waiting for macOS authorization…".into();
         }
         if !self.capture_service && self.launcher.attempted {
-            return "Sesión terminada · usá Reanudar lector".into();
+            return "Session ended · use Resume reader".into();
         }
-        "Preparando el control…".into()
+        "Preparing the remote…".into()
     }
     pub fn test_action(&mut self, button: ButtonId, profile: Profile) -> Result<(), String> {
         self.config.validate()?;
         match self.action(button, profile) {
             Action::Default | Action::Disabled => {
-                return Err("Elegí una acción personalizada para probar".into());
+                return Err("Select a custom action to test".into());
             }
             _ => self.dispatch(button, profile, Instant::now()),
         }
@@ -1028,7 +1029,7 @@ impl Studio {
         self.last_action_result = None;
         let a = self.action(button, profile).clone();
         self.log(
-            "acción",
+            "action",
             format!("{} · {} → {}", button.label(), profile.label(), a.label()),
         );
         if a == Action::VoiceToggle {
@@ -1043,16 +1044,16 @@ impl Studio {
             .try_send((a, self.action_generation.load(Ordering::Relaxed), at))
             .is_err()
         {
-            self.log("acción", "Cola de acciones llena; pulsación descartada");
+            self.log("action", "Action queue full; button press discarded");
         }
     }
     pub fn toggle_recording(&mut self) {
         if self.recording {
             self.stop_audio.store(true, Ordering::Relaxed);
-            self.audio_status = "Guardando grabación…".into();
+            self.audio_status = "Saving recording…".into();
         } else {
             if self.transcribing {
-                self.log("voz", "Esperá a que termine la transcripción anterior");
+                self.log("voice", "Wait for the previous transcription to finish");
                 return;
             }
             self.recording_epoch = self.action_generation.load(Ordering::Relaxed);
@@ -1060,7 +1061,7 @@ impl Studio {
             self.voice_target = crate::actions::frontmost_app().ok();
             self.recording = true;
             self.stop_audio = Arc::new(AtomicBool::new(false));
-            self.audio_status = "Abriendo micrófono…".into();
+            self.audio_status = "Opening microphone…".into();
             audio::start(
                 self.tx.clone(),
                 self.root.clone(),
@@ -1090,7 +1091,7 @@ impl Studio {
     fn change_mode(&mut self, m: MouseMode) {
         if m != self.mode {
             self.mode = m;
-            self.log("modo", m.label());
+            self.log("mode", m.label());
         }
     }
     pub fn poll(&mut self) {
@@ -1100,7 +1101,7 @@ impl Studio {
         if let Some(result) = self.launcher.poll() {
             if let Err(e) = result {
                 self.engine_error = Some(e.clone());
-                self.log("motor", e);
+                self.log("engine", e);
             }
         }
         if self.actions_enabled && !trusted {
@@ -1117,9 +1118,9 @@ impl Studio {
         {
             self.cancel_learning();
             let message =
-                "No llegó una pulsación reconocible; no se cambió la asignación".to_string();
+                "No recognizable button press received; mapping was not changed".to_string();
             self.learn_result = Some(Err(message.clone()));
-            self.log("aprender", message);
+            self.log("learn", message);
         }
         if self.mode == MouseMode::Active
             && self
@@ -1132,10 +1133,10 @@ impl Studio {
             let Ok(e) = self.rx.try_recv() else { break };
             match e {
                 Event::Log(m) => {
-                    if m.starts_with("HID abierto") {
+                    if m.starts_with("HID opened") {
                         self.connected = true;
                     }
-                    self.log("sistema", m)
+                    self.log("system", m)
                 }
                 Event::BleConnected => {
                     self.connected = true;
@@ -1163,11 +1164,11 @@ impl Studio {
                         self.suspend_actions();
                     }
                     self.log(
-                        "motor",
+                        "engine",
                         if ready {
-                            "Servicio de captura listo"
+                            "Capture service ready"
                         } else {
-                            "Servicio de captura desconectado"
+                            "Capture service disconnected"
                         },
                     );
                 }
@@ -1184,11 +1185,11 @@ impl Studio {
                     self.last_mouse = None;
                     self.mode = MouseMode::Normal;
                     self.log(
-                        "motor",
+                        "engine",
                         if exclusive {
-                            "Motor nativo activo · Karabiner no necesario"
+                            "Native engine active · Karabiner not required"
                         } else {
-                            "Control conectado · observando · acciones apagadas"
+                            "Remote connected · observing · actions off"
                         },
                     );
                 }
@@ -1204,7 +1205,7 @@ impl Studio {
                     self.suspend_actions();
                     self.mode = MouseMode::Normal;
                     self.last_mouse = None;
-                    self.log("conexión", message);
+                    self.log("connection", message);
                 }
                 Event::BleCandidates(candidates) => {
                     self.candidates = candidates;
@@ -1222,7 +1223,7 @@ impl Studio {
                     {
                         self.dispatch(button, profile, at);
                     } else {
-                        self.log("routing", format!("{} · {}: pulsación descartada (control pausado, identificación o configuración anterior)", button.label(), profile.label()));
+                        self.log("routing", format!("{} · {}: button press discarded (remote paused, learning, or outdated configuration)", button.label(), profile.label()));
                     }
                 }
                 Event::HidStopped => {
@@ -1246,7 +1247,7 @@ impl Studio {
                     }
                 }
                 Event::AudioStarted(source) => {
-                    self.audio_status = format!("Grabando · {source}");
+                    self.audio_status = format!("Recording · {source}");
                 }
                 Event::AudioDone(result) => {
                     self.recording = false;
@@ -1258,7 +1259,7 @@ impl Studio {
                             self.log("audio", e)
                         }
                         Ok(path) => {
-                            self.audio_status = format!("Audio guardado: {}", path.display());
+                            self.audio_status = format!("Audio saved: {}", path.display());
                             self.log("audio", self.audio_status.clone());
                             if transcribe {
                                 if let Some(t) = self.recording_transcriber.take() {
@@ -1277,9 +1278,9 @@ impl Studio {
                                         .map(|text| (text, t.insert_text, target, epoch));
                                         let _ = tx.send(result);
                                     }));
-                                    self.audio_status = "Transcribiendo localmente…".into();
+                                    self.audio_status = "Transcribing locally…".into();
                                 } else {
-                                    self.log("audio","Grabación guardada. Configurá un transcriptor local en config.json para obtener texto.");
+                                    self.log("audio","Recording saved. Configure a local transcriber in config.json to generate text.");
                                 }
                             }
                         }
@@ -1294,7 +1295,7 @@ impl Studio {
                 Err(error) => (error.clone(), true),
             });
             match r {
-                Ok(s) => self.log("acción", s),
+                Ok(s) => self.log("action", s),
                 Err(e) => self.log("error", e),
             }
         }
@@ -1310,7 +1311,7 @@ impl Studio {
                         self.log("audio", e.to_string());
                         continue;
                     }
-                    self.audio_status = format!("Transcripción guardada · {}", path.display());
+                    self.audio_status = format!("Transcription saved · {}", path.display());
                     self.log("audio", self.audio_status.clone());
                     if insert
                         && epoch == self.action_generation.load(Ordering::Relaxed)
@@ -1319,8 +1320,8 @@ impl Studio {
                         && crate::actions::frontmost_app().ok() == target
                     {
                         match crate::actions::insert_text(&text) {
-                            Ok(()) => self.log("voz", "Texto insertado"),
-                            Err(e) => self.log("voz", e),
+                            Ok(()) => self.log("voice", "Text inserted"),
+                            Err(e) => self.log("voice", e),
                         }
                     }
                 }
@@ -1388,10 +1389,10 @@ impl Studio {
                 self.cancel_learning();
                 let result = self.save_config(next).map(|_| {
                     self.last_button = Some(button);
-                    format!("{} identificado y guardado ({source}). Elegí una función; se guarda automáticamente. Al soltar el botón, el control vuelve a funcionar automáticamente.", button.label())
+                    format!("{} identified and saved ({source}). Select an action; it saves automatically. Release the button to resume the remote automatically.", button.label())
                 });
                 self.log(
-                    "aprender",
+                    "learn",
                     match &result {
                         Ok(m) | Err(m) => m.clone(),
                     },
@@ -1420,11 +1421,11 @@ impl Studio {
                     &b.air_mouse
                 };
                 let disposition = if !self.actions_enabled || !self.native_active {
-                    format!("solo observación · {}", self.engine_status())
+                    format!("observation only · {}", self.engine_status())
                 } else if *action == Action::Default {
-                    "función original".into()
+                    "original function".into()
                 } else if *action == Action::Disabled {
-                    "desactivado en este perfil".into()
+                    "disabled in this profile".into()
                 } else {
                     continue; // DirectAction records the actual dispatch separately.
                 };
@@ -1437,7 +1438,7 @@ impl Studio {
                     ),
                 );
             } else {
-                self.log("routing", format!("{s} · {}: sin botón identificado. Seleccioná el botón en Buttons y pulsá Identificar.", observed_profile.label()));
+                self.log("routing", format!("{s} · {}: no identified button. Select the button in Buttons and click Identify button.", observed_profile.label()));
             }
         }
     }
@@ -1686,14 +1687,14 @@ mod tests {
         let mut studio = Studio::new_inner(root, false);
         studio.listening = true;
         let error = studio.activation_error_with_accessibility(true).unwrap();
-        assert!(error.contains("lector de acciones no está activo"));
-        assert!(!error.contains("Accesibilidad"));
+        assert!(error.contains("action reader is not active"));
+        assert!(!error.contains("Accessibility"));
         studio.capture_service = true;
         assert!(
             studio
                 .activation_error_with_accessibility(false)
                 .unwrap()
-                .contains("Falta Accesibilidad")
+                .contains("Accessibility")
         );
         assert!(studio.activation_error_with_accessibility(true).is_none());
     }

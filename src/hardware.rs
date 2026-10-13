@@ -83,7 +83,7 @@ pub fn inspect_hid() -> Result<Vec<String>, String> {
         ));
     }
     if lines.is_empty() {
-        lines.push("Control no expuesto como HID. Conectalo primero por Bluetooth.".into());
+        lines.push("Remote not exposed as HID. Connect it using Bluetooth first.".into());
     }
     Ok(lines)
 }
@@ -123,7 +123,7 @@ pub fn listen(
         let mut broker = match crate::capture::Broker::new(&root) {
             Ok(b) => Some(b),
             Err(e) => {
-                let _ = tx.try_send(Event::Log(format!("Captura: {e}")));
+                let _ = tx.try_send(Event::Log(format!("Capture: {e}")));
                 None
             }
         };
@@ -163,7 +163,7 @@ pub fn listen(
                             })
                             .collect(),
                     ));
-                    return Err("Hay varios controles conectados. Elegí uno en Conexión.".into());
+                    return Err("Multiple remotes are connected. Select one in Connection.".into());
                 }
                 let info = devices
                     .into_iter()
@@ -172,16 +172,14 @@ pub fn listen(
                             .as_ref()
                             .is_none_or(|s| d.path().to_string_lossy() == s.as_str())
                     })
-                    .ok_or("Control no conectado. Despertalo o buscá un dispositivo nuevo.")?;
+                    .ok_or("Remote not connected. Wake it up or discover a new device.")?;
                 let exclusive = mapping.read().unwrap().is_some();
                 if exclusive && !crate::native_input::trusted() {
-                    return Err(
-                        "Habilitá Accesibilidad para Studio antes de activar las acciones.".into(),
-                    );
+                    return Err("Enable Accessibility for Studio before enabling actions.".into());
                 }
                 #[cfg(target_os = "macos")]
                 if exclusive {
-                    let broker = broker.as_mut().ok_or("Servicio de captura no disponible")?;
+                    let broker = broker.as_mut().ok_or("Capture service unavailable")?;
                     return capture_exclusive(
                         broker,
                         &info.path().to_string_lossy(),
@@ -193,7 +191,7 @@ pub fn listen(
                 #[cfg(target_os = "macos")]
                 api.set_open_exclusive(false);
                 let device = info.open_device(&api).map_err(|e|
-                    format!("No se pudo observar el MR-01: {e}. Revisá Monitoreo de entrada y que Karabiner deje libre el control."))?;
+                    format!("Could not observe the MR-01: {e}. Check Input Monitoring and make sure Karabiner is not capturing this remote."))?;
                 let mut descriptor = [0; 4096];
                 let count = device
                     .get_report_descriptor(&mut descriptor)
@@ -202,7 +200,7 @@ pub fn listen(
                 std::fs::write(root.join("hid-descriptor.bin"), &descriptor[..count])
                     .map_err(|e| e.to_string())?;
                 tx.try_send(Event::HidReady { exclusive })
-                    .map_err(|_| "Cola de entrada saturada".to_string())?;
+                    .map_err(|_| "Input queue full".to_string())?;
                 last_error.clear();
                 let mut bytes = [0; 4096];
                 let result = (|| {
@@ -215,7 +213,7 @@ pub fn listen(
                         }
                         let n = device
                             .read_timeout(&mut bytes, 100)
-                            .map_err(|e| format!("Lectura HID interrumpida: {e}"))?;
+                            .map_err(|e| format!("HID reading interrupted: {e}"))?;
                         if n == 0 {
                             continue;
                         }
@@ -224,9 +222,7 @@ pub fn listen(
                             at,
                             bytes: bytes[..n].to_vec(),
                         })
-                        .map_err(|_| {
-                            "Cola de entrada saturada; se detuvo la captura".to_string()
-                        })?;
+                        .map_err(|_| "Input queue full; capture stopped".to_string())?;
                     }
                     Ok(())
                 })();
@@ -264,7 +260,7 @@ fn service_tick(
     if let Some(broker) = broker {
         if let Err(e) = broker.tick() {
             broker.disconnect();
-            let _ = tx.try_send(Event::Log(format!("Servicio de captura: {e}")));
+            let _ = tx.try_send(Event::Log(format!("Capture service: {e}")));
         }
         let now = broker.available();
         if now != available.0 {
@@ -291,15 +287,15 @@ fn capture_exclusive(
     let result = (|| {
         broker.open(path)?;
         tx.try_send(Event::CapturePermission(broker.input_access))
-            .map_err(|_| "Cola saturada")?;
+            .map_err(|_| "Queue full")?;
         tx.try_send(Event::HidReady { exclusive: true })
-            .map_err(|_| "Cola saturada")?;
+            .map_err(|_| "Queue full")?;
         while !stop.load(Ordering::Relaxed) {
             let Some((config, epoch)) = mapping.read().unwrap().clone() else {
                 break;
             };
             if !crate::native_input::trusted() {
-                return Err("Se revocó Accesibilidad".into());
+                return Err("Accessibility permission was revoked".into());
             }
             let Some(report) = broker.read()? else {
                 continue;
@@ -311,10 +307,10 @@ fn capture_exclusive(
                     tx.try_send(Event::HidUnavailable {
                         present: false,
                         message: format!(
-                            "Lectura interrumpida; reconectando automáticamente: {message}"
+                            "Reading interrupted; reconnecting automatically: {message}"
                         ),
                     })
-                    .map_err(|_| "Cola saturada")?;
+                    .map_err(|_| "Queue full")?;
                     break;
                 }
             };
@@ -327,7 +323,7 @@ fn capture_exclusive(
                         epoch,
                         at,
                     })
-                    .map_err(|_| "Cola saturada")?;
+                    .map_err(|_| "Queue full")?;
                 } else if let Some(message) = crate::native_input::unsupported_original(&output) {
                     if !message.is_empty() {
                         let _ = tx.try_send(Event::Log(message));
@@ -337,7 +333,7 @@ fn capture_exclusive(
                 }
             }
             tx.try_send(Event::Packet { at, bytes })
-                .map_err(|_| "Cola saturada")?;
+                .map_err(|_| "Queue full")?;
         }
         Ok(())
     })();
@@ -360,7 +356,7 @@ async fn bounded<T>(
     future: impl std::future::Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
     tokio::time::timeout(duration, future).await.map_err(|_| {
-        "Bluetooth agotó el tiempo de espera. Revisá el adaptador y volvé a buscar.".to_string()
+        "Bluetooth timed out. Check the adapter and try searching again.".to_string()
     })?
 }
 
@@ -373,9 +369,9 @@ pub fn discover_and_connect(tx: Events, root: PathBuf, selected: Option<String>)
                 let adapter = manager.adapters().await.map_err(|e|e.to_string())?.into_iter().next().ok_or("No Bluetooth adapter")?;
                 let state = adapter.adapter_state().await.map_err(|e|e.to_string())?;
                 let _ = tx.send(Event::BluetoothState(format!("{state:?}")));
-                if state == btleplug::api::CentralState::PoweredOff { return Err("Bluetooth apagado. Encendelo en Ajustes → Bluetooth.".into()); }
+                if state == btleplug::api::CentralState::PoweredOff { return Err("Bluetooth is off. Turn it on in System Settings → Bluetooth.".into()); }
                 adapter.start_scan(ScanFilter::default()).await.map_err(|e|e.to_string())?;
-                log(&tx,"Buscando durante 15 segundos. Para el primer uso: Atrás + OK hasta que parpadee.");
+                log(&tx,"Searching for 15 seconds. For first-time pairing, hold Back + OK until the LED flashes.");
                 let result = async {
                     let mut found = std::collections::BTreeMap::new();
                     for _ in 0..30 {
@@ -392,12 +388,12 @@ pub fn discover_and_connect(tx: Events, root: PathBuf, selected: Option<String>)
                         None if found.len() == 1 => found.keys().next().unwrap().clone(),
                         None if found.len() > 1 => {
                             let _ = tx.send(Event::BleCandidates(found.keys().map(|id|(id.clone(),REMOTE_NAME.to_string())).collect()));
-                            log(&tx,"Se encontraron varios controles. Elegí el que querés conectar.");
+                            log(&tx,"Multiple remotes found. Select the one you want to connect.");
                             return Ok(None);
                         }
-                        _ => return Err("No apareció el control. Verificá el parpadeo y que no esté conectado al teléfono.".into()),
+                        _ => return Err("Remote not found. Check that the LED is flashing and the remote is not connected to your phone.".into()),
                     };
-                    let peripheral = found.remove(&id).ok_or("El control elegido ya no está disponible. Volvé a buscar.")?;
+                    let peripheral = found.remove(&id).ok_or("The selected remote is no longer available. Search again.")?;
                     if !peripheral.is_connected().await.map_err(|e|e.to_string())? {
                         bounded(Duration::from_secs(15), async { peripheral.connect().await.map_err(|e|e.to_string()) }).await?;
                     }
@@ -412,7 +408,7 @@ pub fn discover_and_connect(tx: Events, root: PathBuf, selected: Option<String>)
                 result.map(|p| p.map(|peripheral| (peripheral, manager, adapter)))
             }).await?;
             if let Some((peripheral, _manager, _adapter)) = peripheral {
-                log(&tx,"Bluetooth conectado. Esperando el dispositivo HID de macOS…");
+                log(&tx,"Bluetooth connected. Waiting for the macOS HID device…");
                 let _ = tx.send(Event::BleConnected);
                 loop {
                     tokio::time::sleep(Duration::from_secs(3)).await;

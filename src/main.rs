@@ -22,9 +22,7 @@ fn main() {
         match arg.as_str() {
             "--data-root" => root = args.next().expect("--data-root needs a path").into(),
             "--dispatch" => {
-                eprintln!(
-                    "El puente Karabiner fue retirado. Usá las asignaciones nativas de Studio."
-                );
+                eprintln!("The Karabiner bridge has been removed. Use Studio's native mappings.");
                 std::process::exit(2);
             }
             "--verify-capture" => {
@@ -33,7 +31,7 @@ fn main() {
                     .and_then(|exe| ready_for_air::session::packaged_helper(&exe))
                     .and_then(|helper| ready_for_air::session::verify_packaged_helper(&helper));
                 match result {
-                    Ok(()) => println!("Capture corresponde a esta compilación de Studio"),
+                    Ok(()) => println!("Capture matches this Studio build"),
                     Err(e) => {
                         eprintln!("{e}");
                         std::process::exit(1);

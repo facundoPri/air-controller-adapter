@@ -23,12 +23,12 @@ impl Server {
         let path = root.join("studio.sock");
         if let Ok(meta) = std::fs::symlink_metadata(&path) {
             if !meta.file_type().is_socket() {
-                return Err("studio.sock existe y no es un socket".into());
+                return Err("studio.sock exists and is not a socket".into());
             }
             match UnixStream::connect(&path) {
-                Ok(_) => return Err("Otra instancia ya controla las acciones".into()),
+                Ok(_) => return Err("Another instance already controls the actions".into()),
                 Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
-                Err(e) => return Err(format!("No se pudo verificar el socket existente: {e}")),
+                Err(e) => return Err(format!("Could not verify the existing socket: {e}")),
             }
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
@@ -57,7 +57,7 @@ impl Server {
     }
     #[cfg(not(unix))]
     pub fn start(_root: &Path) -> Result<Self, String> {
-        Err("El puente de acciones aún requiere macOS/Unix".into())
+        Err("The action bridge currently requires macOS/Unix".into())
     }
 }
 impl Drop for Server {

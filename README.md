@@ -1,88 +1,88 @@
 # ACA — Air Controller Adapter
 
-Personalizá tu **Motorola Ready For Air Remote MR-01** desde una app nativa para Mac, escrita en Rust con GPUI. Seleccioná un botón en el modelo 3D, elegí su función y usalo: la asignación se guarda automáticamente.
+Customize your **Motorola Ready For Air Remote MR-01** with a native Mac app built in Rust and GPUI. Select a button on the 3D model, choose an action, and use it: mappings save automatically.
 
-**Proyecto independiente, sin afiliación ni respaldo de Motorola.** Los nombres de dispositivos se usan para identificar compatibilidad.
+**An independent project, not affiliated with or endorsed by Motorola.** Device names identify compatibility.
 
-## Descargar
+## Download
 
-[**Descargar la versión de prueba**](https://github.com/facundoPri/air-controller-adapter/releases/tag/v0.1.0-preview.1) · [Todas las versiones](https://github.com/facundoPri/air-controller-adapter/releases)
+[**Download the preview**](https://github.com/facundoPri/air-controller-adapter/releases/tag/v0.1.0-preview.2) · [All releases](https://github.com/facundoPri/air-controller-adapter/releases)
 
-En **Assets**, descargá `ACA-v0.1.0-preview.1-macos-arm64.zip`. Los archivos “Source code” son el código fuente, no la app.
+Under **Assets**, download `ACA-v0.1.0-preview.2-macos-arm64.zip`. The “Source code” archives contain source files, not the application.
 
-Esta es una **preview experimental para Mac con Apple Silicon (M1 o posterior)**. No requiere Rust ni Karabiner. Necesita un MR-01 y una cuenta con capacidad de autorizar al lector como administrador. Se probó el desarrollo en macOS 26.6.2; el bundle declara macOS 13 como mínimo, pero las versiones anteriores no tienen validación completa. No hay binarios para Intel, Windows o Linux.
+This is an **experimental preview for Apple Silicon Macs (M1 or later)**. It does not require Rust or Karabiner. You need an MR-01 and an account able to authorize the reader as an administrator. Development was tested on macOS 26.6.2; the bundle declares macOS 13 as its minimum, but earlier versions have not been fully validated. There are no Intel, Windows, or Linux binaries.
 
-La descarga tiene firma local **ad hoc**, sin Developer ID ni notarización de Apple. La instalación y los permisos en una Mac nueva todavía requieren validación. El lector funciona en sesiones de **hasta 30 minutos**, renovables desde la app; no es aún un servicio permanente.
+The download is **ad hoc signed**, without an Apple Developer ID or notarization. Installation and permissions on a fresh Mac still need validation. Reader sessions last **up to 30 minutes** and can be renewed in the app; there is no permanent background service yet.
 
-## Instalar y conectar
+## Install and connect
 
-1. Descomprimí el ZIP. Mové la carpeta **ACA** completa a Aplicaciones (o a `~/Applications`). Conservá **ACA Studio.app** y **ACA Capture.app** juntas; no mezcles aplicaciones de versiones diferentes.
-2. Abrí **ACA Studio**. Capture es el lector auxiliar, no una segunda interfaz que debas abrir manualmente.
-3. Si macOS bloquea la app por su firma de desarrollo, revisá **Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente**, siguiendo la [guía oficial de Apple](https://support.apple.com/102445). Esto autoriza esa app; no hace falta desactivar Gatekeeper globalmente. Si tu Mac no ofrece esa opción, guardá el mensaje exacto para reportarlo.
-4. Si el control ya está conectado por Bluetooth, Studio lo detecta automáticamente. Para uno nuevo, mantené **Atrás + OK** hasta que parpadee el LED y elegí **Buscar y conectar** en Conexión. Si aparecen varios controles, seleccioná el tuyo. Apagá temporalmente el Bluetooth del teléfono si está tomando la conexión.
-5. Abrí **Conexión → Preparar esta Mac** y completá los permisos indicados abajo. Usá los enlaces a Ajustes y Finder para agregar las aplicaciones exactas desde la carpeta instalada.
-6. Autorizá el diálogo de administrador que Studio presenta para iniciar Capture. No se abre Terminal. Después comprobá el estado del lector y pulsá un botón para verificar que llega actividad.
+1. Extract the ZIP. Move the entire **ACA** folder into Applications (or `~/Applications`). Keep **ACA Studio.app** and **ACA Capture.app** together; do not mix applications from different releases.
+2. Open **ACA Studio**. Capture is its helper reader, not a second interface you need to launch manually.
+3. If macOS blocks the development-signed app, check **System Settings → Privacy & Security → Open Anyway**, following [Apple's instructions](https://support.apple.com/102445). This authorizes the specific app; you do not need to disable Gatekeeper globally. If that option is unavailable, record the exact message when reporting the issue.
+4. If the remote is already connected over Bluetooth, Studio detects it automatically. For a new remote, hold **Back + OK** until the LED flashes, then choose **Discover & connect** in Connection. Select your remote if several appear. Temporarily turn off your phone's Bluetooth if it is taking the connection.
+5. Open **Connection → Set up this Mac** and complete the permissions below. Use the Settings and Finder links to add the exact apps from your installation folder.
+6. Approve Studio's macOS administrator dialog to start Capture. No Terminal window opens. Check the reader status, then press a button to verify that activity arrives.
 
-### Permisos
+### Permissions
 
-| Permiso | Aplicación | Para qué se usa |
+| Permission | Application | Purpose |
 | --- | --- | --- |
-| Monitoreo de entrada | ACA Studio **y** ACA Capture | Observar y capturar únicamente el control compatible |
-| Accesibilidad | ACA Studio | Reenviar cursor/teclas y ejecutar atajos |
-| Bluetooth | ACA Studio | Buscar y conectar el control |
-| Micrófono, opcional | ACA Studio | Grabar desde la Mac o auriculares |
-| Automatización, cuando se solicite | ACA Studio | Acciones AppleScript dirigidas a otra app |
+| Input Monitoring | ACA Studio **and** ACA Capture | Observe and capture the compatible remote |
+| Accessibility | ACA Studio | Forward pointer/keyboard input and execute shortcuts |
+| Bluetooth | ACA Studio | Discover and connect the remote |
+| Microphone, optional | ACA Studio | Record from your Mac or headset |
+| Automation, when requested | ACA Studio | Run AppleScript actions targeting another app |
 
-Los permisos se conceden en **Ajustes del Sistema → Privacidad y seguridad**. En Monitoreo de entrada y Accesibilidad, agregá la app con **+** si no aparece. Si macOS pide cerrar y reabrir, aceptalo y abrí Studio nuevamente. Capture informa su propio permiso cuando arranca; Studio distingue entre permiso observado, canal abierto y paquetes recibidos.
+Grant permissions in **System Settings → Privacy & Security**. In Input Monitoring and Accessibility, use **+** to add an app if it is missing. If macOS asks you to quit and reopen, accept and open Studio again. Capture reports its own permission at startup; Studio distinguishes observed permission, an open channel, and received packets.
 
-Capture usa privilegios de administrador solo para leer el MR-01. Las acciones y scripts se ejecutan como tu usuario. No se instala un controlador, servicio de inicio ni extensión. Si ya usás Karabiner, desactivá **Modify events solo para este control** para que no compitan por él.
+Capture uses administrator privileges only to read the MR-01. Actions and scripts run as your ordinary user. No driver, login service, or extension is installed. If you already use Karabiner, turn off **Modify events only for this remote** so the two apps do not compete for it.
 
-## Personalizar botones
+## Customize buttons
 
-1. En **Buttons**, seleccioná el botón en el modelo 3D o en la lista.
-2. Elegí el perfil **Normal** o **Air mouse** que querés editar.
-3. Elegí una función: **se guarda y aplica automáticamente** a la próxima pulsación física. No hay que identificar ni activar cada botón.
+1. In **Buttons**, select a button on the 3D model or in the list.
+2. Select the **Normal** or **Air mouse** profile to edit.
+3. Choose an action: **it saves and applies automatically** to the next physical press. You do not need to identify or enable each button.
 
-**Pausar control / Reanudar control** afecta a todas las asignaciones. Para scripts o macros, abrí Opciones avanzadas, editá el JSON y elegí **Guardar acción JSON**. Guardar una función no la ejecuta. Si falla el guardado, la app conserva la configuración anterior y muestra el error.
+**Pause remote / Resume remote** affects all mappings. For scripts or macros, open Advanced options, edit the JSON, and choose **Save action JSON**. Saving an action does not execute it. If saving fails, the app preserves the previous configuration and displays the error.
 
-Hay presets para Mission Control, ventanas de la app, escritorio, aplicaciones, volumen, zoom, Page Up/Down, bloqueo, reposo y apagar pantalla. También atajos, AppleScript, shell y macros. **Zoom necesita los atajos de teclado habilitados en Accesibilidad → Zoom**; ACA no cambia esa preferencia por su cuenta.
+Presets include Mission Control, app windows, desktop, apps, volume, zoom, Page Up/Down, locking, sleep, and display sleep. Shortcuts, AppleScript, shell commands, and macros are also supported. **Zoom requires keyboard shortcuts to be enabled in Accessibility → Zoom**; ACA does not change that setting for you.
 
-### Normal y Air mouse
+### Normal and Air mouse
 
-El movimiento recibido selecciona Air mouse. Una flecha usa la asignación del perfil previo y vuelve a Normal; además, el control apaga su sensor al pulsar una flecha. Tras 1,5 segundos sin reportes de mouse, ACA asume Normal. Esta es una inferencia, no una lectura directa del modo del firmware.
+Received movement selects Air mouse. An arrow uses the previous profile's mapping, then returns to Normal; the remote also turns off its sensor when an arrow is pressed. After 1.5 seconds without mouse reports, ACA assumes Normal. This is an inference, not a direct reading of firmware mode.
 
-Cambiar el perfil en el editor no activa el sensor. El botón físico Air mouse no tiene un evento de pulsación independiente confirmado, por lo que **no se puede reasignar**. La asociación predeterminada de Atrás todavía requiere una comprobación física aislada; las variantes de firmware pueden usar **Volver a identificar** en opciones avanzadas.
+Changing the editor profile does not activate the sensor. The physical Air mouse button has no confirmed independent press event, so **it cannot be remapped**. The default Back mapping still needs an isolated physical check; firmware variants can use **Identify again** in Advanced options.
 
-### Voz
+### Voice
 
-Podés asignar una pulsación para empezar a grabar y otra para detener. Usa el micrófono elegido de la Mac o auriculares; **no se confirmó audio del MR-01**. Para insertar texto necesitás configurar un transcriptor local: no se incluye un modelo ni se sube audio automáticamente. [Guía de voz](docs/voice-setup.md).
+Assign a button to start recording on one press and stop on the next. It uses the selected Mac or headset microphone; **MR-01 audio is not confirmed**. Text insertion requires a configured local transcriber: no model is bundled and audio is not uploaded automatically. [Voice setup guide](docs/voice-setup.md).
 
-## Si algo no funciona
+## Troubleshooting
 
-| Síntoma | Qué revisar |
+| Symptom | What to check |
 | --- | --- |
-| El control no aparece | Bluetooth de la Mac, pilas, Atrás + OK y que el teléfono no lo esté usando. Volvé a buscar en Conexión. |
-| Se ven paquetes pero no se ejecutan acciones | Estado global, Accesibilidad de Studio, lector activo y perfil Normal/Air asignado. Revisá el motivo en Activity. |
-| Termina la sesión o cancelaste la contraseña | Usá **Reanudar lector**. El límite es de 30 minutos; no se repite automáticamente la solicitud cancelada. |
-| macOS dice “not permitted” aunque el permiso esté activo | Verificá que autorizaste las apps de esta instalación. Una actualización con firma ad hoc puede requerir quitarlas y agregarlas otra vez, y reabrir Studio. |
-| Capture falta o no coincide | Volvé a extraer el ZIP completo. Studio verifica el hash de su lector; no admite mezclar versiones. |
-| Zoom no responde | Habilitá los atajos de Accesibilidad → Zoom en macOS. |
-| Atajos o scripts fallan | Revisá Activity, la aplicación enfocada y los permisos de Automatización que macOS solicite. |
+| Remote does not appear | Mac Bluetooth, batteries, Back + OK, and whether your phone is using it. Search again in Connection. |
+| Packets appear but actions do not run | Global pause state, Studio Accessibility, active reader, and the assigned Normal/Air profile. Check Activity for the reason. |
+| Session ended or you canceled authorization | Use **Resume reader**. Sessions last 30 minutes; canceled authorization is not retried automatically. |
+| macOS says “not permitted” although the permission is enabled | Check that you authorized the apps from this installation. An ad hoc signed update may require removing and re-adding them, then reopening Studio. |
+| Capture is missing or does not match | Extract the complete ZIP again. Studio verifies its reader's hash; mixing versions is not supported. |
+| Zoom does not respond | Enable keyboard shortcuts in macOS Accessibility → Zoom. |
+| Shortcuts or scripts fail | Check Activity, the focused application, and any Automation permissions requested by macOS. |
 
-**Activity** permite inspeccionar y exportar los eventos. Para [reportar un problema](https://github.com/facundoPri/air-controller-adapter/issues), incluí versión de ACA/macOS, modelo de Mac, botón, perfil y acción, pasos y mensaje de error. Revisá los logs antes de adjuntarlos: pueden contener tu configuración o datos del dispositivo.
+**Activity** lets you inspect and export events. When [reporting an issue](https://github.com/facundoPri/air-controller-adapter/issues), include your ACA/macOS version, Mac model, button, profile and action, steps, and error message. Review logs before attaching them: they may contain configuration or device data.
 
-## Configuración, actualización y desinstalación
+## Configuration, updates, and removal
 
-El JSON y los datos locales se guardan en `~/Library/Application Support/ReadyForAirLab/`. Ese nombre histórico se conserva para no perder configuraciones anteriores. `config.previous.json` conserva la versión anterior del archivo; las grabaciones y transcripciones también permanecen locales.
+Configuration and local data live in `~/Library/Application Support/ReadyForAirLab/`. This historical folder name is preserved to keep existing configurations. `config.previous.json` holds the previous configuration; recordings and transcriptions remain local too.
 
-Para actualizar, cerrá Studio y reemplazá **ambas apps juntas**, conservando esa carpeta de datos. No ejecutes simultáneamente la versión anterior y ACA. Los identificadores internos mantienen los nombres históricos de Studio/Capture para conservar continuidad; la firma ad hoc aún puede obligar a renovar permisos.
+To update, quit Studio and replace **both apps together**, preserving the data folder. Do not run the previous version and ACA simultaneously. Internal identifiers retain the historical Studio/Capture names for continuity; ad hoc signing may still require renewing permissions.
 
-Para desinstalar, cerrá Studio, eliminá la carpeta ACA y retirala de los permisos en Ajustes. Si además querés borrar configuraciones, grabaciones y transcripciones, eliminá la carpeta de datos tras guardar lo que necesites. No hay servicio permanente que desinstalar.
+To uninstall, quit Studio, delete the ACA folder, and remove its permission entries in Settings. To also remove configurations, recordings, and transcriptions, delete the data folder after backing up anything you need. There is no permanent service to uninstall.
 
-- [Formato JSON y ejemplos](docs/configuration.md)
-- [Mapa de botones y sus límites](docs/mr01-button-map.md)
-- [Arquitectura del motor](docs/native-engine.md)
-- [Compilar, probar y empaquetar](docs/development.md)
-- [Notas de la preview](docs/releases/v0.1.0-preview.1.md)
+- [JSON format and examples](docs/configuration.md)
+- [Button map and limitations](docs/mr01-button-map.md)
+- [Engine architecture](docs/native-engine.md)
+- [Build, test, and package](docs/development.md)
+- [Preview release notes](docs/releases/v0.1.0-preview.2.md)
 
-El repositorio incluye código fuente; aún no se eligió una licencia de código abierto para el código propio. Las dependencias conservan sus licencias; sus avisos se incluyen en la descarga.
+The repository includes source code; an open-source license has not yet been selected for the project's own code. Dependencies retain their licenses, and their notices are included in the download. Third-party license texts and author names are preserved as supplied upstream.

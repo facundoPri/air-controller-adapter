@@ -17,10 +17,10 @@ impl Access {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Unknown => "Sin comprobar",
-            Self::Denied => "Denegado",
-            Self::Granted => "Permiso concedido",
-            Self::Verified => "Lectura comprobada",
+            Self::Unknown => "Not checked",
+            Self::Denied => "Denied",
+            Self::Granted => "Permission granted",
+            Self::Verified => "Reading verified",
         }
     }
 }
@@ -134,7 +134,7 @@ pub fn open_settings(pane: &str) -> Result<String, String> {
         "automation" => {
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
         }
-        _ => return Err("Panel desconocido".into()),
+        _ => return Err("Unknown panel".into()),
     };
     std::process::Command::new("/usr/bin/open")
         .arg(url)
@@ -142,9 +142,9 @@ pub fn open_settings(pane: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
         .and_then(|s| {
             if s.success() {
-                Ok("Ajustes abiertos. Habilitá la app indicada y volvé a comprobar.".into())
+                Ok("Settings opened. Enable the specified app and check again.".into())
             } else {
-                Err("No se pudo abrir Ajustes".into())
+                Err("Could not open Settings".into())
             }
         })
 }
