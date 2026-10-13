@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "buttons": [
+    {
+      "button": "home",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 106
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "experiences",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 141
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "apps",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 107
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "back",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 241
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "up",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 82
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "down",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 81
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "left",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 80
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "right",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 79
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "ok",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 40
+        },
+        {
+          "Mouse": 1
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "capture",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 108
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "mouse_mode",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [],
+      "mouse_sources": []
+    },
+    {
+      "button": "volume_down",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 234
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "volume_up",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Consumer": 233
+        }
+      ],
+      "mouse_sources": []
+    },
+    {
+      "button": "mute",
+      "normal": {
+        "type": "default"
+      },
+      "air_mouse": {
+        "type": "default"
+      },
+      "normal_sources": [
+        {
+          "Keyboard": 127
+        },
+        {
+          "Consumer": 226
+        }
+      ],
+      "mouse_sources": []
+    }
+  ],
+  "audio_input": null,
+  "transcription": null,
+  "mouse_idle_ms": 1500
+}

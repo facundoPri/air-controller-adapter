@@ -1,0 +1,811 @@
+//! Explicit, bounded platform action execution. No actions run while loading a profile.
+use crate::studio::{Action, SystemAction};
+use std::{
+    io::{Read, Write},
+    process::{Command, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
+
+const TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_STEPS: usize = 64;
+
+pub fn execute(action: &Action) -> Result<String, String> {
+    execute_with_context(
+        action,
+        &Execution {
+            deadline: Instant::now() + TIMEOUT,
+            cancellation: None,
+        },
+    )
+}
+
+pub fn execute_cancellable(
+    action: &Action,
+    generation: &AtomicU64,
+    epoch: u64,
+) -> Result<String, String> {
+    execute_with_context(
+        action,
+        &Execution {
+            deadline: Instant::now() + TIMEOUT,
+            cancellation: Some((generation, epoch)),
+        },
+    )
+}
+
+struct Execution<'a> {
+    deadline: Instant,
+    cancellation: Option<(&'a AtomicU64, u64)>,
+}
+impl Execution<'_> {
+    fn check(&self) -> Result<(), String> {
+        if self
+            .cancellation
+            .is_some_and(|(generation, epoch)| generation.load(Ordering::Acquire) != epoch)
+        {
+            return Err("Acción cancelada al desactivar o cambiar la configuración".into());
+        }
+        if Instant::now() >= self.deadline {
+            return Err("La acción excedió 15 segundos y fue detenida".into());
+        }
+        Ok(())
+    }
+}
+fn execute_with_context(action: &Action, context: &Execution<'_>) -> Result<String, String> {
+    context.check()?;
+    validate(action, 0, &mut 0)?;
+    if !cfg!(target_os = "macos") {
+        return Err("Las acciones de escritorio todavía requieren macOS".into());
+    }
+    check_zoom_requirement(action, zoom_shortcuts_enabled)?;
+    execute_inner(action, context)?;
+    Ok("Solicitud completada; el efecto depende de macOS y de la aplicación de destino".into())
+}
+
+/// Use the same executable contract when saving a mapping. Voice is owned by
+/// Studio and is only allowed at the root, never inside the generic executor.
+pub fn validate_definition(action: &Action) -> Result<(), String> {
+    if *action == Action::VoiceToggle {
+        return Ok(());
+    }
+    validate(action, 0, &mut 0)
+}
+
+pub fn uses_zoom(action: &Action) -> bool {
+    match action {
+        Action::System {
+            command: SystemAction::ZoomIn | SystemAction::ZoomOut | SystemAction::ZoomToggle,
+        } => true,
+        Action::Macro { steps } => steps.iter().any(uses_zoom),
+        _ => false,
+    }
+}
+
+/// User-facing contract, including dependencies that posting an event cannot
+/// validate (focused app, audio device, transcription model).
+pub fn guidance(action: &Action, has_transcriber: bool) -> &'static str {
+    match action {
+        Action::Default => {
+            "Conserva la señal original. Home, Apps, Experiences y Capture son funciones Android sin equivalente original en macOS: asignales una función. Atrás depende de la señal del control."
+        }
+        Action::Disabled => {
+            "Ignora este botón en el perfil seleccionado. No desactiva el modo mouse del firmware."
+        }
+        Action::System { command } => match command {
+            SystemAction::ZoomIn | SystemAction::ZoomOut | SystemAction::ZoomToggle => {
+                "Zoom de pantalla de macOS, no de la página web. Requiere Ajustes → Accesibilidad → Zoom → Usar funciones rápidas de teclado para hacer zoom. Usa ⌥⌘8, ⌥⌘= y ⌥⌘−; la posición ampliada depende de las opciones de Zoom del sistema."
+            }
+            SystemAction::MissionControl => {
+                "Muestra las ventanas y escritorios mediante Mission Control de macOS."
+            }
+            SystemAction::AppExpose => {
+                "Muestra las ventanas de la aplicación enfocada. Si no tiene ventanas disponibles, puede no haber un cambio visible."
+            }
+            SystemAction::ShowDesktop => {
+                "Alterna entre mostrar el escritorio y recuperar las ventanas mediante Mission Control."
+            }
+            SystemAction::Launchpad => {
+                "Abre Apps en macOS Tahoe o Launchpad en versiones anteriores. La presentación depende de macOS."
+            }
+            SystemAction::VolumeUp | SystemAction::VolumeDown => {
+                "Cambia el volumen de salida en 6 puntos (0–100). No cambia el estado de silencio. Algunas salidas HDMI, digitales o interfaces de audio requieren sus propios controles."
+            }
+            SystemAction::Mute => {
+                "Alterna el silencio de la salida de audio actual. Algunas salidas externas no permiten control de volumen o silencio desde macOS."
+            }
+            SystemAction::DisplaySleep => {
+                "Apaga las pantallas inmediatamente. La Mac sigue encendida; mover el mouse o pulsar una tecla puede despertarlas."
+            }
+            SystemAction::Sleep => {
+                "Solicita suspender la Mac inmediatamente. macOS puede impedir o demorar la suspensión según la actividad del sistema."
+            }
+            SystemAction::LockScreen => {
+                "Envía ⌃⌘Q para bloquear la sesión. Necesita Accesibilidad y autorización para controlar System Events."
+            }
+        },
+        Action::Shortcut { key, modifiers }
+            if modifiers.is_empty() && matches!(key.as_str(), "page_up" | "page_down") =>
+        {
+            "Envía Page Up / Page Down a la aplicación enfocada. El desplazamiento depende de esa aplicación y del campo activo; no depende de dónde esté el cursor. Necesita Accesibilidad y autorización para controlar System Events."
+        }
+        Action::Shortcut { .. } => {
+            "Envía el atajo a la aplicación enfocada. Copiar requiere una selección; pegar usa el portapapeles. Necesita Accesibilidad y autorización para controlar System Events. Las teclas de símbolos dependen de la distribución del teclado."
+        }
+        Action::Scroll { .. } => {
+            "Desplaza en píxeles en la zona del cursor; 3 px es un movimiento muy pequeño. Para avanzar una página elegí Página arriba / Página abajo. Los valores del JSON se conservan."
+        }
+        Action::VoiceToggle if !has_transcriber => {
+            "Una pulsación empieza a grabar; otra guarda un WAV. Usa el micrófono de la Mac o auriculares y requiere permiso de micrófono. Falta configurar un transcriptor local: por ahora no convierte ni inserta texto."
+        }
+        Action::VoiceToggle => {
+            "Una pulsación graba; otra guarda y transcribe con tu programa configurado. Usa el micrófono de la Mac o auriculares. Solo inserta si insert_text está habilitado y sigue enfocada la misma aplicación externa; el transcriptor y su modelo deben estar instalados."
+        }
+        Action::Macro { .. } => {
+            "Ejecuta los pasos en orden, con un máximo total de 15 segundos. El sistema puede completar sus efectos después; no se espera una animación entre pasos. No admite grabación de voz dentro de la macro."
+        }
+        Action::AppleScript { .. } => {
+            "Ejecuta tu AppleScript con los permisos del usuario. macOS puede pedir autorización para controlar cada aplicación de destino. Límite: 15 segundos."
+        }
+        Action::Shell { .. } => {
+            "Ejecuta el comando con zsh, sin cargar tu configuración de shell. Usá rutas absolutas: el PATH puede ser distinto al de Terminal. Límite: 15 segundos."
+        }
+    }
+}
+
+fn check_zoom_requirement(
+    action: &Action,
+    read: impl FnOnce() -> Option<bool>,
+) -> Result<(), String> {
+    if !uses_zoom(action) {
+        return Ok(());
+    }
+    match read() {
+        Some(true) => Ok(()),
+        Some(false) => Err("Zoom no enviado: activá «Usar funciones rápidas de teclado para hacer zoom» en Ajustes → Accesibilidad → Zoom.".into()),
+        None => Err("No se pudo verificar Zoom. Revisá «Usar funciones rápidas de teclado para hacer zoom» en Ajustes → Accesibilidad → Zoom.".into()),
+    }
+}
+
+/// Read-only preference probe. No setting is enabled on the user's behalf.
+/// Missing/unreadable values are unknown, not a claim that zoom is available.
+pub fn zoom_shortcuts_enabled() -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use native::*;
+        let domain = CFStringCreateWithCString(
+            std::ptr::null(),
+            c"com.apple.universalaccess".as_ptr(),
+            0x08000100,
+        );
+        let key = CFStringCreateWithCString(
+            std::ptr::null(),
+            c"closeViewHotkeysEnabled".as_ptr(),
+            0x08000100,
+        );
+        if domain.is_null() || key.is_null() {
+            if !domain.is_null() {
+                CFRelease(domain);
+            }
+            if !key.is_null() {
+                CFRelease(key);
+            }
+            return None;
+        }
+        // This process never writes this preference; synchronize refreshes cached
+        // values after the user changes Zoom while Studio stays open.
+        CFPreferencesAppSynchronize(domain);
+        let mut valid = 0u8;
+        let enabled = CFPreferencesGetAppBooleanValue(key, domain, &mut valid);
+        CFRelease(key);
+        CFRelease(domain);
+        (valid != 0).then_some(enabled != 0)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn validate(action: &Action, depth: usize, count: &mut usize) -> Result<(), String> {
+    *count += 1;
+    if depth > 4 || *count > MAX_STEPS {
+        return Err("Macro demasiado grande: máximo 64 pasos y 4 niveles".into());
+    }
+    match action {
+        Action::Macro { steps } => {
+            for step in steps {
+                validate(step, depth + 1, count)?;
+            }
+        }
+        Action::Shell { command } | Action::AppleScript { script: command }
+            if command.len() > 65536 =>
+        {
+            return Err("El script supera 64 KiB".into());
+        }
+        Action::Shortcut { key, modifiers } => {
+            shortcut_script(key, modifiers)?;
+        }
+        Action::Scroll { x, y } if x.unsigned_abs() > 10000 || y.unsigned_abs() > 10000 => {
+            return Err("Scroll fuera de rango".into());
+        }
+        Action::VoiceToggle => return Err("La grabación se controla desde la aplicación".into()),
+        _ => {}
+    }
+    Ok(())
+}
+
+fn execute_inner(action: &Action, context: &Execution<'_>) -> Result<(), String> {
+    context.check()?;
+    match action {
+        Action::Default | Action::Disabled => Ok(()),
+        Action::Shortcut { key, modifiers } => {
+            apple_script(&shortcut_script(key, modifiers)?, context)
+        }
+        Action::AppleScript { script } => apple_script(script, context),
+        Action::Shell { command } => run(
+            Command::new("/bin/zsh").args(["-f", "-c", command]),
+            None,
+            context,
+        ),
+        Action::Macro { steps } => {
+            for step in steps {
+                execute_inner(step, context)?;
+            }
+            Ok(())
+        }
+        Action::System { command } => system(command, context),
+        Action::Scroll { x, y } => scroll(*x, *y),
+        Action::VoiceToggle => Err("La grabación se controla desde la aplicación".into()),
+    }
+}
+
+fn run(command: &mut Command, input: Option<&str>, context: &Execution<'_>) -> Result<(), String> {
+    context.check()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let child = command
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut running = crate::process::Running::new(child);
+    let child = &mut running.child;
+    // Drain stderr continuously, retaining only 4 KiB. A verbose script cannot
+    // fill the pipe and deadlock the worker; error messages keep the real cause.
+    let stderr = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = stderr.clone();
+    let mut stream = child.stderr.take().ok_or("No se pudo abrir stderr")?;
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 1024];
+        while let Ok(n) = stream.read(&mut chunk) {
+            if n == 0 {
+                break;
+            }
+            let mut bytes = captured.lock().unwrap();
+            let keep = n.min(4096usize.saturating_sub(bytes.len()));
+            bytes.extend_from_slice(&chunk[..keep]);
+        }
+        let _ = done_tx.send(());
+    });
+    if let Some(input) = input {
+        let bytes = input.as_bytes().to_vec();
+        let mut stdin = child.stdin.take().ok_or("No se pudo abrir stdin")?;
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&bytes);
+        });
+    }
+    loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            running.stop();
+            return if status.success() {
+                Ok(())
+            } else {
+                let _ = done_rx.recv_timeout(Duration::from_millis(100));
+                let bytes = stderr.lock().unwrap();
+                let detail: String = String::from_utf8_lossy(&bytes)
+                    .chars()
+                    .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                    .collect();
+                Err(format!("La acción terminó con {status}: {}", detail.trim()))
+            };
+        }
+        if let Err(reason) = context.check() {
+            running.stop();
+            return Err(reason);
+        }
+        std::thread::sleep(Duration::from_millis(15));
+    }
+}
+
+fn apple_script(script: &str, context: &Execution<'_>) -> Result<(), String> {
+    run(
+        Command::new("/usr/bin/osascript").arg("-"),
+        Some(script),
+        context,
+    )
+}
+
+fn shortcut_script(key: &str, modifiers: &[String]) -> Result<String, String> {
+    let code = key_code(key).ok_or_else(|| format!("Tecla no soportada: {key}"))?;
+    let mut mapped = Vec::new();
+    for modifier in modifiers {
+        mapped.push(match modifier.as_str() {
+            "command" | "cmd" | "super" => "command down",
+            "control" | "ctrl" => "control down",
+            "option" | "alt" => "option down",
+            "shift" => "shift down",
+            _ => return Err(format!("Modificador no soportado: {modifier}")),
+        });
+    }
+    let suffix = if mapped.is_empty() {
+        String::new()
+    } else {
+        format!(" using {{{}}}", mapped.join(", "))
+    };
+    Ok(format!(
+        "tell application \"System Events\" to key code {code}{suffix}"
+    ))
+}
+
+fn key_code(key: &str) -> Option<u16> {
+    Some(match key.to_ascii_lowercase().as_str() {
+        "a" => 0,
+        "s" => 1,
+        "d" => 2,
+        "f" => 3,
+        "h" => 4,
+        "g" => 5,
+        "z" => 6,
+        "x" => 7,
+        "c" => 8,
+        "v" => 9,
+        "b" => 11,
+        "q" => 12,
+        "w" => 13,
+        "e" => 14,
+        "r" => 15,
+        "y" => 16,
+        "t" => 17,
+        "1" => 18,
+        "2" => 19,
+        "3" => 20,
+        "4" => 21,
+        "6" => 22,
+        "5" => 23,
+        "equal_sign" | "=" => 24,
+        "9" => 25,
+        "7" => 26,
+        "hyphen" | "-" => 27,
+        "8" => 28,
+        "0" => 29,
+        "close_bracket" | "]" => 30,
+        "o" => 31,
+        "u" => 32,
+        "open_bracket" | "[" => 33,
+        "i" => 34,
+        "p" => 35,
+        "return_or_enter" | "enter" | "return" => 36,
+        "l" => 37,
+        "j" => 38,
+        "quote" | "'" => 39,
+        "k" => 40,
+        "semicolon" | ";" => 41,
+        "backslash" | "\\" => 42,
+        "comma" | "," => 43,
+        "slash" | "/" => 44,
+        "n" => 45,
+        "m" => 46,
+        "period" | "." => 47,
+        "tab" => 48,
+        "spacebar" | "space" => 49,
+        "grave_accent_and_tilde" | "`" => 50,
+        "delete_or_backspace" | "backspace" => 51,
+        "escape" | "esc" => 53,
+        "f1" => 122,
+        "f2" => 120,
+        "f3" => 99,
+        "f4" => 118,
+        "f5" => 96,
+        "f6" => 97,
+        "f7" => 98,
+        "f8" => 100,
+        "f9" => 101,
+        "f10" => 109,
+        "f11" => 103,
+        "f12" => 111,
+        "home" => 115,
+        "end" => 119,
+        "page_up" => 116,
+        "page_down" => 121,
+        "delete_forward" | "delete" => 117,
+        "left_arrow" | "left" => 123,
+        "right_arrow" | "right" => 124,
+        "down_arrow" | "down" => 125,
+        "up_arrow" | "up" => 126,
+        _ => return None,
+    })
+}
+
+fn applications_path(exists: impl Fn(&str) -> bool) -> Result<&'static str, String> {
+    [
+        "/System/Applications/Apps.app",
+        "/System/Applications/Launchpad.app",
+    ]
+    .into_iter()
+    .find(|path| exists(path))
+    .ok_or_else(|| {
+        "Esta versión de macOS no ofrece Apps ni Launchpad en Aplicaciones del sistema".into()
+    })
+}
+
+fn system(action: &SystemAction, context: &Execution<'_>) -> Result<(), String> {
+    let script = match action {
+        SystemAction::MissionControl => {
+            return run(
+                Command::new("/usr/bin/open").arg("/System/Applications/Mission Control.app"),
+                None,
+                context,
+            );
+        }
+        SystemAction::AppExpose | SystemAction::ShowDesktop => {
+            // Use Launch Services, not the inner Mach-O (macOS rejects direct
+            // launch with SIGKILL/Code Signature Invalid on Tahoe). A fresh
+            // instance guarantees the requested argument is delivered.
+            return run(
+                Command::new("/usr/bin/open").args([
+                    "-n",
+                    "/System/Applications/Mission Control.app",
+                    "--args",
+                    if *action == SystemAction::ShowDesktop {
+                        "1"
+                    } else {
+                        "2"
+                    },
+                ]),
+                None,
+                context,
+            );
+        }
+        SystemAction::Launchpad => {
+            return run(
+                Command::new("/usr/bin/open")
+                    .arg(applications_path(|p| std::path::Path::new(p).is_dir())?),
+                None,
+                context,
+            );
+        }
+        SystemAction::VolumeUp => {
+            "set level to (output volume of (get volume settings)) + 6\nif level > 100 then set level to 100\nset volume output volume level"
+        }
+        SystemAction::VolumeDown => {
+            "set level to (output volume of (get volume settings)) - 6\nif level < 0 then set level to 0\nset volume output volume level"
+        }
+        SystemAction::Mute => {
+            "set volume output muted (not (output muted of (get volume settings)))"
+        }
+        SystemAction::ZoomIn => {
+            "tell application \"System Events\" to key code 24 using {command down, option down}"
+        }
+        SystemAction::ZoomOut => {
+            "tell application \"System Events\" to key code 27 using {command down, option down}"
+        }
+        SystemAction::ZoomToggle => {
+            "tell application \"System Events\" to key code 28 using {command down, option down}"
+        }
+        SystemAction::DisplaySleep => {
+            return run(
+                Command::new("/usr/bin/pmset").arg("displaysleepnow"),
+                None,
+                context,
+            );
+        }
+        SystemAction::Sleep => "tell application \"System Events\" to sleep",
+        SystemAction::LockScreen => {
+            "tell application \"System Events\" to key code 12 using {command down, control down}"
+        }
+    };
+    apple_script(script, context)
+}
+
+#[cfg(target_os = "macos")]
+mod native {
+    use std::ffi::c_void;
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        pub fn AXIsProcessTrusted() -> bool;
+        pub fn CGEventCreateKeyboardEvent(
+            source: *const c_void,
+            key: u16,
+            down: bool,
+        ) -> *mut c_void;
+        pub fn CGEventKeyboardSetUnicodeString(
+            event: *mut c_void,
+            length: usize,
+            string: *const u16,
+        );
+        pub fn CGEventCreateScrollWheelEvent(
+            source: *const c_void,
+            units: u32,
+            count: u32,
+            ...
+        ) -> *mut c_void;
+        pub fn CGEventPost(location: u32, event: *mut c_void);
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        pub fn CFRelease(object: *const c_void);
+        pub fn CFStringCreateWithCString(
+            allocator: *const c_void,
+            string: *const std::ffi::c_char,
+            encoding: u32,
+        ) -> *const c_void;
+        pub fn CFPreferencesAppSynchronize(application: *const c_void) -> u8;
+        pub fn CFPreferencesGetAppBooleanValue(
+            key: *const c_void,
+            application: *const c_void,
+            valid: *mut u8,
+        ) -> u8;
+    }
+}
+
+fn scroll(x: i32, y: i32) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        if !native::AXIsProcessTrusted() {
+            return Err("Falta permiso de Accesibilidad para generar scroll".into());
+        }
+        let event = native::CGEventCreateScrollWheelEvent(std::ptr::null(), 0, 2, y, x);
+        if event.is_null() {
+            return Err("No se pudo crear el evento de scroll".into());
+        }
+        native::CGEventPost(0, event);
+        native::CFRelease(event);
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y);
+        Err("Scroll requiere macOS".into())
+    }
+}
+
+/// Bundle identifier of the frontmost application, queried without Apple Events.
+pub fn frontmost_app() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use std::ffi::{CStr, c_char, c_void};
+        #[link(name = "AppKit", kind = "framework")]
+        unsafe extern "C" {}
+        #[link(name = "objc")]
+        unsafe extern "C" {
+            fn objc_getClass(name: *const c_char) -> *mut c_void;
+            fn sel_registerName(name: *const c_char) -> *mut c_void;
+            fn objc_msgSend(receiver: *mut c_void, selector: *mut c_void) -> *mut c_void;
+            fn objc_autoreleasePoolPush() -> *mut c_void;
+            fn objc_autoreleasePoolPop(pool: *mut c_void);
+        }
+        let pool = objc_autoreleasePoolPush();
+        let result = (|| {
+            let class = objc_getClass(c"NSWorkspace".as_ptr());
+            let workspace = objc_msgSend(class, sel_registerName(c"sharedWorkspace".as_ptr()));
+            let app = objc_msgSend(
+                workspace,
+                sel_registerName(c"frontmostApplication".as_ptr()),
+            );
+            let bundle = objc_msgSend(app, sel_registerName(c"bundleIdentifier".as_ptr()));
+            let string = objc_msgSend(bundle, sel_registerName(c"UTF8String".as_ptr()));
+            if string.is_null() {
+                return Err("No se pudo identificar la aplicación enfocada".into());
+            }
+            Ok(CStr::from_ptr(string.cast()).to_string_lossy().into_owned())
+        })();
+        objc_autoreleasePoolPop(pool);
+        result
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("La aplicación enfocada solo se detecta en macOS".into())
+    }
+}
+
+/// Inserts Unicode directly, without replacing or reading the user's clipboard.
+/// Caller must only invoke after explicit opt-in and after checking external focus.
+pub fn insert_text(text: &str) -> Result<(), String> {
+    if text.encode_utf16().count() > 16384 {
+        return Err("La transcripción supera 16.384 unidades UTF-16".into());
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let target = frontmost_app()?;
+        if target.starts_with("dev.facundo.ReadyForAir")
+            || target.starts_with("dev.facundo.ready-air")
+        {
+            return Err(
+                "Seleccioná una aplicación externa antes de insertar la transcripción".into(),
+            );
+        }
+        if !native::AXIsProcessTrusted() {
+            return Err("Falta permiso de Accesibilidad para insertar texto".into());
+        }
+        let units: Vec<u16> = text.encode_utf16().collect();
+        if units.is_empty() {
+            return Ok(());
+        }
+        // A full UTF-16 payload keeps supplementary Unicode characters together.
+        for down in [true, false] {
+            let event = native::CGEventCreateKeyboardEvent(std::ptr::null(), 0, down);
+            if event.is_null() {
+                return Err("No se pudo crear el evento de texto".into());
+            }
+            native::CGEventKeyboardSetUnicodeString(event, units.len(), units.as_ptr());
+            native::CGEventPost(0, event);
+            native::CFRelease(event);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = text;
+        Err("Inserción de texto requiere macOS".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn zoom_disabled_or_unknown_is_not_reported_as_executed() {
+        let zoom = Action::System {
+            command: SystemAction::ZoomToggle,
+        };
+        assert!(
+            check_zoom_requirement(&zoom, || Some(false))
+                .unwrap_err()
+                .contains("Zoom no enviado")
+        );
+        assert!(check_zoom_requirement(&zoom, || None).is_err());
+        assert!(check_zoom_requirement(&zoom, || Some(true)).is_ok());
+        // Preflight is done before the first step, not after earlier macro effects.
+        let nested = Action::Macro {
+            steps: vec![
+                Action::System {
+                    command: SystemAction::LockScreen,
+                },
+                Action::Macro { steps: vec![zoom] },
+            ],
+        };
+        assert!(check_zoom_requirement(&nested, || Some(false)).is_err());
+        assert!(
+            check_zoom_requirement(&Action::Default, || panic!(
+                "Unrelated actions must not read Zoom"
+            ))
+            .is_ok()
+        );
+    }
+    #[test]
+    fn page_shortcuts_match_macos_virtual_keys() {
+        for (key, code) in [("page_up", 116), ("page_down", 121)] {
+            assert_eq!(
+                shortcut_script(key, &[]).unwrap(),
+                format!("tell application \"System Events\" to key code {code}")
+            );
+        }
+    }
+    #[test]
+    #[ignore = "read-only probe of the current Mac; no events are posted"]
+    fn inspect_zoom_preference() {
+        println!("Zoom keyboard shortcuts: {:?}", zoom_shortcuts_enabled());
+    }
+    #[test]
+    fn apps_uses_tahoe_launcher_and_falls_back_for_older_macos() {
+        assert_eq!(
+            applications_path(|_| true).unwrap(),
+            "/System/Applications/Apps.app"
+        );
+        assert_eq!(
+            applications_path(|p| p.ends_with("Launchpad.app")).unwrap(),
+            "/System/Applications/Launchpad.app"
+        );
+        assert!(applications_path(|_| false).is_err());
+    }
+    #[test]
+    fn subprocess_failure_reports_cause_not_a_permission_guess() {
+        let e = execute(&Action::Shell {
+            command: "printf 'fixture application missing' >&2; exit 7".into(),
+        })
+        .unwrap_err();
+        assert!(e.contains("fixture application missing"));
+        assert!(!e.contains("Accesibilidad"));
+    }
+    #[test]
+    fn stale_generation_is_rejected_before_any_action() {
+        let generation = AtomicU64::new(2);
+        assert!(
+            execute_cancellable(&Action::Default, &generation, 1)
+                .unwrap_err()
+                .contains("cancelada")
+        );
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cancelling_running_macro_stops_child_and_skips_later_steps() {
+        use std::sync::Arc;
+        let root =
+            std::env::temp_dir().join(format!("ready-air-action-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let started = root.join("started");
+        let after = root.join("after");
+        let quote =
+            |p: &std::path::Path| format!("'{}'", p.to_str().unwrap().replace('\'', "'\\''"));
+        let action = Action::Macro {
+            steps: vec![
+                Action::Shell {
+                    command: format!("printf started > {}; /bin/sleep 5", quote(&started)),
+                },
+                Action::Shell {
+                    command: format!("printf after > {}", quote(&after)),
+                },
+            ],
+        };
+        let generation = Arc::new(AtomicU64::new(0));
+        let cancel = generation.clone();
+        let marker = started.clone();
+        let canceller = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !marker.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            cancel.fetch_add(1, Ordering::Release);
+        });
+        let begin = Instant::now();
+        let result = execute_cancellable(&action, &generation, 0);
+        canceller.join().unwrap();
+        assert!(started.exists(), "test subprocess did not start");
+        assert!(result.unwrap_err().contains("cancelada"));
+        assert!(begin.elapsed() < Duration::from_secs(4));
+        assert!(!after.exists(), "a later macro step ran after cancellation");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn completed_shell_cannot_leave_background_effects() {
+        let marker = std::env::temp_dir().join(format!("air-orphan-{}", uuid::Uuid::new_v4()));
+        execute(&Action::Shell {
+            command: format!("(sleep 0.3; touch '{}') & exit 0", marker.display()),
+        })
+        .unwrap();
+        std::thread::sleep(Duration::from_millis(600));
+        let leaked = marker.exists();
+        let _ = std::fs::remove_file(marker);
+        assert!(!leaked, "descendant survived completed action");
+    }
+    #[test]
+    fn shortcut_rejects_script_injection() {
+        assert!(shortcut_script("a\" & do shell script", &[]).is_err());
+        assert!(shortcut_script("a", &["command down}; do shell script".into()]).is_err());
+        assert_eq!(
+            shortcut_script("up", &["ctrl".into()]).unwrap(),
+            "tell application \"System Events\" to key code 126 using {control down}"
+        );
+    }
+    #[test]
+    fn validates_entire_macro_before_execution() {
+        let action = Action::Macro {
+            steps: vec![Action::Default; 65],
+        };
+        assert!(validate(&action, 0, &mut 0).is_err());
+        let action = Action::Macro {
+            steps: vec![Action::Default, Action::VoiceToggle],
+        };
+        assert!(validate(&action, 0, &mut 0).is_err());
+    }
+}
