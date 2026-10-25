@@ -268,6 +268,8 @@ impl Sender {
         use mac::*;
         unsafe {
             match *output {
+                #[cfg(feature = "virtual-keyboard")]
+                Output::KeyboardPointer { .. } | Output::SessionAction { .. } => Ok(()),
                 Output::Action(..) => Ok(()),
                 Output::Key { usage, down } => {
                     if let Some(media_key) = keyboard_media_key(usage) {

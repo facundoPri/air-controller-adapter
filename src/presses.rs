@@ -1,5 +1,5 @@
 //! Button recognition for the observed MR-01 keyboard/consumer HID reports.
-//! Mouse movement and vendor reports never trigger recording.
+//! Mouse movement and vendor reports never generate keyboard or consumer button presses.
 use crate::report::{Report, decode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

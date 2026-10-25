@@ -7,17 +7,15 @@ data/
 diagnostics/scan-ble
 diagnostics/inspect-hid
 .DS_Store
+__pycache__/
 
 # Local agent state, hardware evidence and third-party reference material.
 .codex/
 assets/reference/
 research.md
 diagnostics/
-docs/*
-!docs/configuration.md
-!docs/config.example.json
-!docs/voice-setup.md
-!docs/native-engine.md
-!docs/mr01-button-map.md
-!docs/releases/
-!docs/development.md
+# Keep generated docs, research, reviews and handoffs local.
+# Matt Pocock skills use agent configuration and architecture decisions.
+/docs/*
+!/docs/agents/
+!/docs/adr/

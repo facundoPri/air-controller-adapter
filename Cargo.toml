@@ -1,9 +1,20 @@
 [package]
 name = "ready-for-air"
-version = "0.1.0"
+version = "0.1.0-preview.3"
 edition = "2024"
 publish = false
 default-run = "ready-for-air"
+
+[features]
+virtual-keyboard = []
+# Retain the verified foreground implementation until the native service gate passes.
+managed-reader = []
+# Native diagnostic only: ask IOKit to open even when its preflight says denied,
+# so the gate records the actual IOHIDDeviceOpen result. Never package for use.
+service-probe = ["managed-reader"]
+
+[build-dependencies]
+cc = "1"
 
 [dependencies]
 gpui-kit = "=0.7.1"
@@ -11,8 +22,6 @@ gpui-kit = "=0.7.1"
 rust-embed = { version = "8", features = ["debug-embed"] }
 btleplug = { version = "0.11", features = ["serde"] }
 hidapi = { version = "2.6", features = ["macos-shared-device"] }
-cpal = "0.15"
-hound = "3.5"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

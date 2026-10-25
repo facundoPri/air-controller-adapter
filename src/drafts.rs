@@ -39,20 +39,27 @@ impl Drafts {
 mod tests {
     use super::*;
     #[test]
-    fn unsaved_text_survives_audio_change_and_button_navigation() {
+    fn unsaved_configuration_survives_preset_changes_and_navigation() {
         let mut drafts = Drafts::default();
-        drafts.sync("config", "old", None);
+        drafts.sync("config", "old config", None);
         assert_eq!(
-            drafts.sync("config", "new audio", Some(("config", "typed transcriber"))),
-            "typed transcriber"
+            drafts.sync(
+                "config",
+                "changed preset",
+                Some(("config", "custom macro draft"))
+            ),
+            "custom macro draft"
         );
-        assert!(drafts.check_save("config", "new audio").is_err());
-        drafts.sync("home", "default", Some(("config", "typed transcriber")));
-        drafts.sync("capture", "mission", Some(("home", "custom script")));
+        assert!(drafts.check_save("config", "changed preset").is_err());
         assert_eq!(
-            drafts.sync("home", "default", Some(("capture", "mission"))),
-            "custom script"
+            drafts.sync("config", "changed preset", None),
+            "custom macro draft"
         );
-        assert!(drafts.check_save("home", "default").is_ok());
+        drafts.discard("config");
+        assert_eq!(
+            drafts.sync("config", "changed preset", None),
+            "changed preset"
+        );
+        assert!(drafts.check_save("config", "changed preset").is_ok());
     }
 }
