@@ -1,405 +1,615 @@
-//! CONNECTION view: remote link, microphone/voice and configuration file.
+//! CONNECTION view: the remote's state and next step first, then compact
+//! permission details, then the configuration editor and diagnostics.
 
-use super::{StudioApp, theme::*};
+use super::{StudioApp, status, theme::*};
 use gpui_kit::{
     base::Disableable,
     component::{
-        Sizable,
+        Icon, IconName, Sizable,
         button::{Button, ButtonVariants},
         input::Textarea,
     },
     prelude::FluentBuilder,
     *,
 };
-use ready_for_air::studio::Config;
+use ready_for_air::{
+    lifecycle::{ConnectionCommand, ConnectionStatus, Readiness, SetupAction},
+    permissions::{self, Access},
+    studio::Config,
+};
 
-fn state_row(
-    label: &'static str,
-    on: bool,
-    on_text: &'static str,
-    off_text: &'static str,
-    on_color: u32,
+/// Children of the scroll container, for `scroll_to_item`.
+const CONFIGURATION_ITEM: usize = 2;
+
+/// Status text and colour for one permission or session requirement.
+fn requirement(
+    met: Option<bool>,
+    yes: &'static str,
+    no: &'static str,
+    unknown: &'static str,
 ) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap_3()
-        .text_size(px(13.))
-        .child(dot(if on { on_color } else { FAINT }))
-        .child(div().w(px(90.)).text_color(rgb(MUTED)).child(label))
-        .child(
-            div()
-                .text_color(rgb(TEXT))
-                .child(if on { on_text } else { off_text }),
-        )
+    let (color, text) = match met {
+        Some(true) => (ACCENT, yes),
+        Some(false) => (WARN, no),
+        None => (FAINT, unknown),
+    };
+    div().flex().items_center().gap_2().child(dot(color)).child(
+        div()
+            .text_color(rgb(if met == Some(true) { TEXT } else { MUTED }))
+            .child(text),
+    )
+}
+
+fn access(a: Access) -> Option<bool> {
+    match a {
+        Access::Unknown => None,
+        Access::Denied => Some(false),
+        Access::Granted | Access::Verified => Some(true),
+    }
+}
+
+/// Opaque identifiers are long; show enough of the end to tell remotes apart.
+fn short_id(id: &str) -> String {
+    let tail: String = id
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if tail.len() < id.len() {
+        format!("…{tail}")
+    } else {
+        tail
+    }
 }
 
 impl StudioApp {
-    pub(super) fn render_connection(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let s = &self.studio;
-
-        use ready_for_air::permissions::{self, Access};
-        let capture = permissions::capture_observation(
-            s.capture_access,
-            s.capture_service,
-            s.capture_verified,
-        );
-        let checks = [
-            (
-                "Studio · Accessibility",
-                if ready_for_air::native_input::trusted() {
-                    Access::Granted
+    fn disclosure(
+        &self,
+        id: &'static str,
+        title: &'static str,
+        open: bool,
+        badge: Option<&'static str>,
+        toggle: fn(&mut Self),
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .gap_2()
+            .cursor_pointer()
+            .child(
+                Icon::new(if open {
+                    IconName::ChevronDown
                 } else {
-                    Access::Denied
-                },
-                "accessibility",
-            ),
-            ("Studio · Input Monitoring", permissions::input(), "input"),
-            ("Capture · Input Monitoring", capture, "input"),
-            (
-                "Bluetooth · discovery permission",
-                permissions::optional("bluetooth"),
-                "bluetooth",
-            ),
-            (
-                "Microphone · optional, voice only",
-                permissions::optional("microphone"),
-                "microphone",
-            ),
-        ];
-        let mut setup = card().child(heading("Set up this Mac"))
-            .child(caption("1. Turn on the remote. Connected remotes are detected automatically. To pair: hold Back + OK, then choose Discover. Select one if several appear."))
-            .child(caption("2. Enable Accessibility and Input Monitoring for Studio. Authorize the reader when macOS asks; Capture checks its own permission separately from Studio."));
-        for (index, (label, access, pane)) in checks.into_iter().enumerate() {
-            setup = setup.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(div().flex_1().child(format!("{label}: {}", access.label())))
-                    .child(
-                        Button::new(("permission", index))
-                            .label("Open Settings")
-                            .small()
-                            .ghost()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.report("connection", permissions::open_settings(pane));
-                                cx.notify();
-                            })),
-                    ),
-            );
-        }
-        setup = setup.child(caption(format!("Bluetooth adapter: {}. Status is checked during discovery; permission does not mean the adapter is powered on.", s.bluetooth_state)))
-            .child(caption("3. Reading verified means packets have arrived through Capture. Permission granted only confirms TCC; Authenticated channel only confirms the process connection. If the signature changed, remove and re-add the exact app in Settings and reopen it."))
-            .child(caption("Automation is optional and depends on the action and target application. macOS requests it when an AppleScript runs; failures appear in Activity. Audio and Automation permissions are not requested at startup."))
-            .child(Button::new("bluetooth-settings").label("Bluetooth settings").small().ghost().on_click(cx.listener(|this, _, _, cx| {
-                this.report("connection", permissions::open_settings("radio")); cx.notify();
-            })))
-            .child(caption("If an app is missing from Input Monitoring, use + to add Studio or Capture from this folder. Enable the missing permission; macOS may ask you to quit and reopen the app."))
-            .child(Button::new("show-permission-apps").label("Show apps for permissions").small().ghost().on_click(cx.listener(|this, _, _, cx| {
-                let r = std::env::current_exe().map_err(|e|e.to_string()).and_then(|exe| {
-                    let app = exe.ancestors().nth(3).ok_or("App bundle not found")?;
-                    let status = std::process::Command::new("/usr/bin/open").arg("-R").arg(app).status().map_err(|e|e.to_string())?;
-                    if status.success() { Ok("App folder opened".into()) } else { Err("Could not open Finder".into()) }
-                });
-                this.report("connection", r); cx.notify();
-            })))
-            .child(Button::new("automation-settings").label("Automation permissions").small().ghost().on_click(cx.listener(|this, _, _, cx| {
-                this.report("connection", permissions::open_settings("automation")); cx.notify();
-            })))
-            .child(Button::new("recheck-permissions").label("Check again / retry reader").small().on_click(cx.listener(|this, _, _, cx| {
-                let r = this.studio.start_capture_service(); this.report("connection",r); cx.notify();
-            })));
-
-        let remote = card()
-            .flex_1()
-            .min_w(px(300.))
-            .child(heading("Remote"))
-            .child(state_row("Control", s.connected, "Present", if s.connecting { "Searching…" } else { "Not connected" }, OK))
-            .child(state_row("HID capture", s.listening, "Listening", "Stopped", OK))
-            .child(state_row("Actions service", s.capture_service, "Authenticated channel", "Not started", OK))
-            .when(s.needs_retry(), |d| d.child(
-                Button::new("start-capture-service").label("Resume reader").small().disabled(s.capture_starting())
-                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                        let result = this.studio.start_capture_service();
-                        this.report("connection", result);
-                        cx.notify();
-                    }))
-            ))
-            .child(caption("Studio prepares the remote automatically at startup. Use the macOS dialog if authorization is requested. Sessions last up to 30 minutes; use Resume reader to renew an expired session. No Terminal window is opened and no permanent service is installed."))
-            .when_some(self.message("connection").cloned(), |d, m| d.child(notice(&m)))
-            .child(state_row(
-                "Mode",
-                s.listening,
-                mode_name(s.mode),
-                "Normal (default)",
-                ACCENT,
-            ))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .when(!s.connected, |d| d.child(
-                        Button::new("connect")
-                            .label(if s.connecting { "Searching…" } else { "Discover & connect" })
-                            .small()
-                            .primary()
-                            .loading(s.connecting)
-                            .disabled(s.connecting)
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.studio.connect();
-                                cx.notify();
-                            })),
-                    ))
-
-            )
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(rgb(TEXT))
-                    .whitespace_normal()
-                    .child(format!("Status: {}", s.status)),
-            )
-            .children(s.candidates.iter().enumerate().map(|(i,(id,name))| {
-                let id=id.clone();
-                Button::new(("candidate",i)).label(format!("{name} · {id}")).small()
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {this.studio.connect_candidate(id.clone());cx.notify();}))
-            }))
-            .child(caption(
-                "Pairing: hold Back + OK until the LED blinks. If a phone grabs the remote, turn off the phone's Bluetooth first. Already paired remotes are detected automatically. Studio reconnects when they wake up. Studio needs Input Monitoring and Accessibility; ACA Capture needs Input Monitoring and administrator authentication.",
-            ))
-            .child(caption(format!(
-                "Packets: {} · last: {}",
-                s.packet_count, s.last_packet
-            )));
-
-        let selected_input = s.config.audio_input.clone();
-        let input_row = |id: (&'static str, usize),
-                         name: Option<String>,
-                         label: String,
-                         this: &Self,
-                         cx: &mut Context<Self>| {
-            let selected = selected_input == name;
-            div()
-                .id(id)
-                .flex()
-                .items_center()
-                .gap_2()
-                .px_3()
-                .h(px(32.))
-                .rounded(px(4.))
-                .text_size(px(13.))
-                .cursor_pointer()
-                .map(|d| {
-                    if selected {
-                        d.bg(rgb(ACCENT))
-                            .text_color(rgb(ACCENT_TEXT))
-                            .font_weight(FontWeight::SEMIBOLD)
-                    } else if this.studio.recording {
-                        d.text_color(rgb(FAINT))
-                    } else {
-                        d.text_color(rgb(TEXT)).hover(|s| s.bg(rgb(HOVER)))
-                    }
+                    IconName::ChevronRight
                 })
-                .child(
-                    div()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child(label),
-                )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    if this.studio.recording {
-                        this.report(
-                            "audio",
-                            Err("Stop the recording before changing the input".into()),
-                        );
-                    } else {
-                        let mut next = this.studio.config.clone();
-                        next.audio_input = name.clone();
-                        let r = this
-                            .studio
-                            .save_config(next)
-                            .map(|_| {
-                                format!(
-                                    "Microphone: {}",
-                                    name.as_deref().unwrap_or("System default")
-                                )
-                            })
-                            .map_err(|e| format!("Input not changed: {e}"));
-                        this.report("audio", r);
-                    }
-                    cx.notify();
-                }))
-        };
-        let mut inputs = vec![input_row(
-            ("input", 0),
-            None,
-            "System default".into(),
-            self,
-            cx,
-        )];
-        for (i, name) in self.studio.audio_inputs.clone().into_iter().enumerate() {
-            inputs.push(input_row(
-                ("input", i + 1),
-                Some(name.clone()),
-                name,
-                self,
-                cx,
-            ));
-        }
-        let s = &self.studio;
-        let transcriber = match &s.config.transcription {
-            Some(t) => format!(
-                "Local transcriber: {} {}{}",
-                t.program,
-                t.args.join(" "),
-                if t.insert_text { " · inserts text into the focused app" } else { "" }
-            ),
-            None => "No local transcriber configured — recordings are saved as audio files. Add a \"transcription\" entry in the configuration JSON below.".into(),
-        };
-
-        let microphone = card()
-            .flex_1()
-            .min_w(px(300.))
-            .child(heading("Microphone"))
-            .child(div().flex().flex_col().gap_1().children(inputs))
-            .when(s.audio_inputs.is_empty(), |d| {
-                d.child(caption("No input devices listed. Press Refresh; macOS may ask for Microphone permission."))
-            })
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .child(
-                        Button::new("refresh-inputs")
-                            .label(if s.audio_refreshing { "Loading inputs…" } else { "Refresh" })
-                            .small()
-                            .ghost()
-                            .disabled(s.recording || s.audio_refreshing)
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.studio.refresh_audio_inputs();
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Button::new("record")
-                            .label(if s.recording { "Stop recording" } else { "Record" })
-                            .small()
-                            .map(|b| if s.recording { b.danger() } else { b.primary() })
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.studio.toggle_recording();
-                                cx.notify();
-                            })),
-                    ),
+                .text_color(rgb(MUTED)),
             )
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(rgb(if s.recording { DANGER } else { TEXT }))
-                    .child(s.audio_status.clone()),
-            )
-            .child(caption(transcriber))
-            .when_some(self.message("audio").cloned(), |d, m| d.child(notice(&m)));
-
-        let editor = self.config_editor.clone();
-        let configuration = card()
-            .child(heading("Configuration"))
-            .child(
-                div()
-                    .font_family(MONO)
-                    .text_size(px(12.))
-                    .text_color(rgb(MUTED))
-                    .child(s.config_path().display().to_string()),
-            )
-            .child(caption(format!(
-                "Air mouse idle timeout: {} ms (returns to the Normal profile after silence; this is a software default, not a hardware status query).",
-                s.config.mouse_idle_ms
-            )))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .child(Button::new("reveal-2").label("Reveal in Finder").small().on_click(
-                        cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.reveal_config();
-                            cx.notify();
-                        }),
-                    ))
-                    .child(Button::new("reload-2").label("Discard draft and reload").small().ghost().on_click(
-                        cx.listener(|this, _: &ClickEvent, _, cx| {
-                            let r = this
-                                .studio
-                                .reload()
-                                .map(|_| "Reloaded from disk".to_string())
-                                .map_err(|e| format!("Reload failed: {e}"));
-                            if r.is_ok() {
-                                this.drafts.discard("config");
-                                this.config_editor_key.clear();
-                            }
-                            this.report("config", r);
-                            cx.notify();
-                        }),
-                    ))
-                    .child(Button::new("apply-config").label("Validate & save JSON").small().primary().on_click(
-                        cx.listener(|this, _: &ClickEvent, _, cx| {
-                            let Some(editor) = this.config_editor.clone() else {
-                                return;
-                            };
-                            let text = editor.read(cx).value();
-                            let model = serde_json::to_string_pretty(&this.studio.config).unwrap_or_default();
-                            // Capture typing even if no render happened since the last keystroke.
-                            this.drafts.sync("config", &model, Some(("config", text.as_str())));
-                            let r = this.drafts.check_save("config", &model).and_then(|_| serde_json::from_str::<Config>(&text)
-                                .map_err(|e| format!("Invalid configuration JSON: {e}"))
-                                .and_then(|config| {
-                                    config.validate().map_err(|e| format!("Invalid configuration: {e}"))?;
-                                    this.studio
-                                        .save_config(config)
-                                        .map(|_| "Configuration saved".to_string())
-                                        .map_err(|e| format!("Not saved: {e}"))
-                                }));
-                            if r.is_ok() { this.drafts.discard("config"); this.config_editor_key.clear(); }
-                            this.report("config", r);
-                            cx.notify();
-                        }),
-                    )),
-            )
-            .when_some(self.message("config").cloned(), |d, m| d.child(notice(&m)))
-            .child(caption(
-                "Full configuration as JSON. Validated, saved, and applied automatically.",
-            ))
-            .when_some(editor, |d, editor| {
+            .child(heading(title))
+            .when_some(badge, |d, badge| {
                 d.child(
                     div()
-                        .font_family(MONO)
-                        .text_size(px(12.))
-                        .child(Textarea::new(&editor).h(px(320.))),
+                        .px_2()
+                        .rounded(px(4.))
+                        .bg(rgb(0x3a3220))
+                        .text_size(px(11.))
+                        .text_color(rgb(WARN))
+                        .child(badge),
                 )
-            });
+            })
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                toggle(this);
+                cx.notify();
+            }))
+    }
 
+    pub(super) fn render_connection(
+        &mut self,
+        status: &ConnectionStatus,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        if std::mem::take(&mut self.reveal_editor) {
+            self.connection_scroll
+                .scroll_to_top_of_item(CONFIGURATION_ITEM);
+            if let Some(editor) = &self.config_editor {
+                window.focus(&editor.read(cx).focus_handle(cx), cx);
+            }
+        }
         div()
             .id("connection-scroll")
             .size_full()
             .overflow_y_scroll()
-            .pr(px(44.))
-            .pb_4()
+            .track_scroll(&self.connection_scroll)
             .flex()
             .flex_col()
             .gap_4()
-            .child(setup)
+            .child(self.render_remote_card(status, cx))
+            .child(self.render_setup_card(status, cx))
+            .child(self.render_configuration_card(cx))
+            .child(self.render_diagnostics_card(status, cx))
+    }
+
+    fn render_remote_card(
+        &self,
+        status: &ConnectionStatus,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let (headline, color) = status::headline(status);
+        let primary = status::primary(status).filter(|n| n.step != status::Step::ChooseDevice);
+        let secondary = status::secondary(status);
+        let choosing = status.next_action == Some(SetupAction::SelectDevice);
+        let reader = if !status.capture_authenticated {
+            "Not running"
+        } else if status.reading_verified {
+            "Authenticated · reading verified"
+        } else if status.capture_access == Access::Unknown {
+            "Authenticated · input access not determined"
+        } else if status.capture_access == Access::Denied {
+            "Authenticated · input access not allowed"
+        } else {
+            "Authenticated · waiting for the first report"
+        };
+        let candidates = status
+            .candidates
+            .iter()
+            .enumerate()
+            .map(|(i, device)| {
+                let id = device.id.clone();
+                Button::new(("candidate", i))
+                    .label(format!("{} · {}", device.name, short_id(&device.id)))
+                    .small()
+                    .outline()
+                    .tooltip(device.id.clone())
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.run_command(ConnectionCommand::SelectDevice(id.clone()));
+                        cx.notify();
+                    }))
+            })
+            .collect::<Vec<_>>();
+        card()
+            .gap_4()
             .child(
                 div()
                     .flex()
-                    .flex_wrap()
-                    .gap_4()
-                    .child(remote)
-                    .child(microphone),
+                    .items_center()
+                    .gap_3()
+                    .child(dot(color))
+                    .child(
+                        div()
+                            .text_size(px(20.))
+                            .line_height(px(26.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(headline),
+                    )
+                    .when_some(status::observed_mode(status), |d, mode| {
+                        d.child(div().text_size(px(14.)).text_color(rgb(MUTED)).child(mode))
+                    })
+                    .child(div().flex_1())
+                    .when(status::can_disconnect(status), |d| {
+                        d.child(
+                            Button::new("connection-disconnect")
+                                .label("Disconnect")
+                                .small()
+                                .outline()
+                                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                    this.open_confirmation(window, cx);
+                                })),
+                        )
+                    }),
             )
-            .child(configuration)
+            .child(
+                div()
+                    .text_size(px(13.5))
+                    .line_height(px(20.))
+                    .text_color(rgb(TEXT))
+                    .whitespace_normal()
+                    .child(status.reason.clone()),
+            )
+            .when(primary.is_some() || secondary.is_some(), |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_2()
+                        .when_some(primary, |d, n| d.child(self.step_button("remote-primary", n, true, cx)))
+                        .when_some(secondary, |d, n| d.child(self.step_button("remote-secondary", n, false, cx))),
+                )
+            })
+            .when(choosing, |d| {
+                d.child(caption(if status.candidates.is_empty() {
+                    "Waiting for remotes to choose from. Wake the remote you want to use."
+                } else {
+                    "Several remotes are available. Choose the one to use:"
+                }))
+                .child(div().flex().flex_wrap().gap_2().children(candidates))
+            })
+            .when_some(self.message("connection").cloned(), |d, m| d.child(notice(&m)))
+            .when(status::stopped(status), |d| {
+                d.child(caption(
+                    "ACA no longer reads this remote. Its Bluetooth link may still be open; disconnect it in Bluetooth Settings if needed. ACA cannot verify that step.",
+                ))
+            })
+            .child(rule())
+            .child(fact(
+                "Device",
+                status
+                    .device
+                    .as_ref()
+                    .map_or("None selected".to_string(), |d| d.name.clone()),
+            ))
+            .child(fact("Bluetooth link", status::transport(status.transport)))
+            .child(fact("Reader", reader))
+    }
+
+    fn render_setup_card(
+        &self,
+        status: &ConnectionStatus,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let p = status.permissions;
+        let capture = permissions::capture_observation(
+            status.capture_access,
+            status.capture_authenticated,
+            status.reading_verified,
+        );
+        let settings = |id: &'static str, pane: &'static str, cx: &mut Context<Self>| {
+            Button::new(id)
+                .label("Open Settings")
+                .small()
+                .ghost()
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.report("connection", permissions::open_settings(pane));
+                    cx.notify();
+                }))
+        };
+        let needs_reader = matches!(
+            status.next_action,
+            Some(
+                SetupAction::AuthorizeReader
+                    | SetupAction::RetryReader
+                    | SetupAction::EnableService
+                    | SetupAction::ApproveService
+            )
+        );
+        let row = |label: &'static str, state: Div, action: Option<AnyElement>| {
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .min_h(px(32.))
+                .text_size(px(13.))
+                .child(
+                    div()
+                        .w(px(200.))
+                        .flex_none()
+                        .text_color(rgb(MUTED))
+                        .child(label),
+                )
+                .child(div().flex_1().min_w_0().child(state))
+                .when_some(action, |d, a| d.child(a))
+        };
+        card()
+            .gap_2()
+            .child(heading("Permissions & reader"))
+            .when_some(status.service_error.clone(), |d, error| d.child(caption(error).text_color(rgb(DANGER))))
+            .child(caption(
+                if cfg!(feature = "managed-reader") { "ACA checks its own access and the reader's access separately. Choose Request reader access, then follow the entry macOS identifies in Privacy & Security. Reading is verified after input arrives." } else { "Studio and ACA Capture are separate apps in Privacy & Security; each needs its own Input Monitoring." },
+            ))
+            .child(row(
+                if cfg!(feature = "managed-reader") { "ACA · Input Monitoring" } else { "Studio · Input Monitoring" },
+                requirement(access(p.input), "Allowed", "Not allowed", "Not determined"),
+                (!p.input.allowed()).then(|| settings("open-studio-input", "input", cx).into_any_element()),
+            ))
+            .child(row(
+                if cfg!(feature = "managed-reader") { "ACA · Accessibility" } else { "Studio · Accessibility" },
+                requirement(Some(p.accessibility), "Allowed", "Not allowed", ""),
+                (!p.accessibility)
+                    .then(|| settings("open-accessibility", "accessibility", cx).into_any_element()),
+            ))
+            .child(row(
+                if cfg!(feature = "managed-reader") { "Reader · Input Monitoring" } else { "Capture · Input Monitoring" },
+                requirement(access(capture), "Allowed", "Not allowed", "Not determined"),
+                if status.next_action == Some(SetupAction::RequestReaderInput) && !status::stopped(status) {
+                    Some(self.step_button(
+                        "request-reader-input",
+                        status::NextStep {
+                            label: "Request reader access",
+                            step: status::Step::Run(ConnectionCommand::RequestReaderInput),
+                        },
+                        true,
+                        cx,
+                    ).into_any_element())
+                } else {
+                    (capture == Access::Denied)
+                        .then(|| settings("open-capture-input", "input", cx).into_any_element())
+                },
+            ))
+            .when(cfg!(feature = "managed-reader"), |d| d.child(row(
+                "Background service",
+                requirement(
+                    Some(status.service_status == ready_for_air::service::Status::Enabled),
+                    status.service_status.label(), status.service_status.label(), "Not checked",
+                ),
+                Some(Button::new("open-background-settings").label("Open Login Items").small().ghost()
+                    .on_click(cx.listener(|_, _: &ClickEvent, _, _| ready_for_air::service::open_settings())).into_any_element()),
+            )))
+            .child(row(
+                if cfg!(feature = "managed-reader") { "Remote reader" } else { "Reader session" },
+                requirement(
+                    Some(status.capture_authenticated),
+                    if cfg!(feature = "managed-reader") { "Authenticated" } else { "Authorized (up to 30 minutes per session)" },
+                    if self.studio.capture_starting() {
+                        "Waiting for macOS authorization…"
+                    } else {
+                        if cfg!(feature = "managed-reader") { "Not authenticated" } else { "Not authorized" }
+                    },
+                    "",
+                ),
+                needs_reader.then(|| {
+                    self.step_button(
+                        "authorize-reader",
+                        status::NextStep {
+                            label: status::primary(status).map_or("Set up ACA", |step| step.label),
+                            step: status::Step::Run(ConnectionCommand::ResolveSetup),
+                        },
+                        true,
+                        cx,
+                    )
+                    .into_any_element()
+                }),
+            ))
+            .child(row(
+                "Bluetooth discovery",
+                requirement(
+                    access(p.bluetooth),
+                    "Allowed",
+                    "Not allowed · paired remotes still work",
+                    "Asked only when searching for a new remote",
+                ),
+                (p.bluetooth == Access::Denied)
+                    .then(|| settings("open-bluetooth-privacy", "bluetooth", cx).into_any_element()),
+            ))
+            .child(
+                div()
+                    .pt_2()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .child(caption(if cfg!(feature = "managed-reader") { "macOS decides which app needs Input Monitoring. If its entry is missing, use + to add the exact ACA or bundled ACA Reader shown in Finder. macOS may ask you to quit and reopen the app." } else { "Missing from a list in Settings? Add it with + from the app folder." }))
+                    .when(cfg!(feature = "managed-reader"), |d| d.child(
+                        Button::new("show-internal-reader").label("Show reader").small().ghost()
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                let result = std::env::current_exe().map_err(|e| e.to_string())
+                                    .and_then(|exe| ready_for_air::session::packaged_helper(&exe))
+                                    .and_then(|helper| {
+                                        ready_for_air::session::verify_packaged_helper(&helper)?;
+                                        let bundle = helper.ancestors().nth(3).ok_or("Reader bundle not found")?;
+                                        std::process::Command::new("/usr/bin/open").arg("-R").arg(bundle).status()
+                                            .map_err(|e| e.to_string()).and_then(|s| if s.success() { Ok("ACA Reader shown in Finder. Add this app only if macOS identifies it as the entry that needs Input Monitoring.".into()) } else { Err("Could not open Finder".into()) })
+                                    });
+                                this.report("connection", result); cx.notify();
+                            }))
+                    ))
+                    .child(
+                        Button::new("show-permission-apps")
+                            .label(if cfg!(feature = "managed-reader") { "Show ACA" } else { "Show apps" })
+                            .small()
+                            .ghost()
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                let r = std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| {
+                                    let app = exe.ancestors().nth(3).ok_or("App bundle not found")?;
+                                    let status = std::process::Command::new("/usr/bin/open")
+                                        .arg("-R")
+                                        .arg(app)
+                                        .status()
+                                        .map_err(|e| e.to_string())?;
+                                    if status.success() {
+                                        Ok("App folder opened".into())
+                                    } else {
+                                        Err("Could not open Finder".into())
+                                    }
+                                });
+                                this.report("connection", r);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("bluetooth-settings")
+                            .label("Bluetooth Settings")
+                            .small()
+                            .ghost()
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.report("connection", permissions::open_settings("radio"));
+                                cx.notify();
+                            })),
+                    ),
+            )
+    }
+
+    fn render_configuration_card(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let s = &self.studio;
+        let editor = self.config_editor.clone();
+        let draft = editor
+            .as_ref()
+            .is_some_and(|e| e.read(cx).value().as_ref() != self.config_editor_key.as_str());
+        let open = self.configuration_open;
+        card()
+            .child(self.disclosure(
+                "configuration-toggle",
+                "Configuration JSON",
+                open,
+                draft.then_some("Unsaved draft"),
+                |this| this.configuration_open = !this.configuration_open,
+                cx,
+            ))
+            .when(!open, |d| {
+                d.child(caption(
+                    "The full configuration, including scripts, macros and scrolls that presets do not cover.",
+                ))
+            })
+            .when(open, |d| {
+                d.when_some(s.migration_notice.clone(), |d, message| d.child(notice(&(message, false))))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .font_family(MONO)
+                                    .text_size(px(12.))
+                                    .text_color(rgb(MUTED))
+                                    .child(s.config_path().display().to_string()),
+                            )
+                            .child(Button::new("reveal-config").label("Reveal in Finder").small().ghost().on_click(
+                                cx.listener(|this, _: &ClickEvent, _, cx| {
+                                    this.reveal_config();
+                                    cx.notify();
+                                }),
+                            )),
+                    )
+                    .child(caption(format!(
+                        "Validated before saving and applied immediately. The air mouse idle timeout is {} ms: after that much silence ACA returns to the Normal profile (a software default, not a hardware query).",
+                        s.config.mouse_idle_ms
+                    )))
+                    .when_some(editor, |d, editor| {
+                        d.child(
+                            div()
+                                .font_family(MONO)
+                                .text_size(px(12.))
+                                .child(Textarea::new(&editor).h(px(340.))),
+                        )
+                    })
+                    .when_some(self.message("config").cloned(), |d, m| d.child(notice(&m)))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .justify_end()
+                            .gap_2()
+                            .child(Button::new("reload-config").label("Discard draft and reload").small().ghost().on_click(
+                                cx.listener(|this, _: &ClickEvent, _, cx| {
+                                    let r = this
+                                        .studio
+                                        .reload()
+                                        .map(|_| "Reloaded from disk".to_string())
+                                        .map_err(|e| format!("Reload failed: {e}"));
+                                    if r.is_ok() {
+                                        this.drafts.discard("config");
+                                        this.config_editor_key.clear();
+                                    }
+                                    this.report("config", r);
+                                    cx.notify();
+                                }),
+                            ))
+                            .child(Button::new("apply-config").label("Validate & save").small().primary().disabled(!draft).on_click(
+                                cx.listener(|this, _: &ClickEvent, _, cx| {
+                                    let Some(editor) = this.config_editor.clone() else {
+                                        return;
+                                    };
+                                    let text = editor.read(cx).value();
+                                    let model = serde_json::to_string_pretty(&this.studio.config).unwrap_or_default();
+                                    // Capture typing even if no render happened since the last keystroke.
+                                    this.drafts.sync("config", &model, Some(("config", text.as_str())));
+                                    let r = this.drafts.check_save("config", &model).and_then(|_| serde_json::from_str::<Config>(&text)
+                                        .map_err(|e| format!("Invalid configuration JSON: {e}"))
+                                        .and_then(|config| {
+                                            config.validate().map_err(|e| format!("Invalid configuration: {e}"))?;
+                                            this.studio
+                                                .save_config(config)
+                                                .map(|_| "Configuration saved".to_string())
+                                                .map_err(|e| format!("Not saved: {e}"))
+                                        }));
+                                    if r.is_ok() { this.drafts.discard("config"); this.config_editor_key.clear(); }
+                                    this.report("config", r);
+                                    cx.notify();
+                                }),
+                            )),
+                    )
+            })
+    }
+
+    fn render_diagnostics_card(
+        &self,
+        status: &ConnectionStatus,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let s = &self.studio;
+        let open = self.diagnostics_open;
+        card()
+            .child(self.disclosure(
+                "diagnostics-toggle",
+                "Diagnostics",
+                open,
+                None,
+                |this| this.diagnostics_open = !this.diagnostics_open,
+                cx,
+            ))
+            .when(open, |d| {
+                d.child(fact("State", format!("{:?}", status.state)))
+                    .child(fact(
+                        "Device identifier",
+                        div()
+                            .truncate()
+                            .font_family(MONO)
+                            .text_size(px(12.))
+                            .child(status.device.as_ref().map_or("—".to_string(), |d| d.id.clone())),
+                    ))
+                    .when(cfg!(feature = "managed-reader"), |d| d.child(
+                        Button::new("remove-background-service").label("Remove background service").small().ghost()
+                            .disabled(status.reconnect_allowed || status.state == Readiness::Disconnecting || self.studio.capture_starting())
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.run_command(ConnectionCommand::RemoveService); cx.notify();
+                            }))
+                    ))
+                    .child(fact("Bluetooth adapter", s.bluetooth_state.clone()))
+                    .child(fact("Exclusive reader", if status.exclusive_reader { "Active" } else { "Inactive" }))
+                    .child(fact(
+                        "Packets",
+                        format!("{} · last {}", s.packet_count, s.last_packet),
+                    ))
+                    .when(status.state == Readiness::Failed, |d| {
+                        d.child(caption("If stopping takes too long, wait for the worker to finish or quit ACA before retrying."))
+                    })
+                    .child(caption(
+                        "Automation is requested by macOS the first time an AppleScript action targets an app; failures appear in Activity.",
+                    ))
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(
+                                Button::new("automation-settings")
+                                    .label("Automation permissions")
+                                    .small()
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.report("connection", permissions::open_settings("automation"));
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("retry-reader")
+                                    .label("Restart reader")
+                                    .small()
+                                    .ghost()
+                                    .disabled(!status.reconnect_allowed || self.studio.capture_starting())
+                                    .tooltip(if cfg!(feature = "managed-reader") { "Releases the remote and reconnects to the approved service" } else { "Stops and restarts the reader; macOS may ask for authorization again" })
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.run_command(ConnectionCommand::RetrySetup);
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+            })
     }
 }

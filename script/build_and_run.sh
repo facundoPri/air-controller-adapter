@@ -24,7 +24,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirStudio</string>
 <key>CFBundleName</key><string>ACA Studio</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
@@ -32,7 +32,6 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>NSBluetoothAlwaysUsageDescription</key><string>Discover and connect your Motorola Ready For Air Remote.</string>
 <key>NSBluetoothPeripheralUsageDescription</key><string>Discover and connect your Motorola Ready For Air Remote.</string>
 <key>NSAppleEventsUsageDescription</key><string>Run the actions and AppleScripts you assigned to buttons.</string>
-<key>NSMicrophoneUsageDescription</key><string>Record from your selected microphone when you press Record or the remote button assigned to recording.</string>
 </dict></plist>
 PLIST
 CAPTURE="$DIST/ACA Capture.app"
@@ -46,7 +45,7 @@ cat > "$CAPTURE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirCapture</string>
 <key>CFBundleName</key><string>ACA Capture</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST

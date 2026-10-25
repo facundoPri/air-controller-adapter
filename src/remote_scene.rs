@@ -1,7 +1,7 @@
 //! 3D Motorola MR-01 ("Ready For Air Remote") scene, owned by the 3D agent.
 //!
 //! Rendering approach: a procedural triangle mesh in model space (millimetres,
-//! laid out from the button diagram in `docs/reference/mr-01-motorola-es.pdf`)
+//! laid out from the button diagram in Motorola's MR-01 manual)
 //! is transformed on the CPU by an orbit camera, projected with a perspective
 //! projection, back-face culled, shaded per face (key + fill + rim + Blinn
 //! specular) and painter-sorted far to near. Every resulting screen triangle is
@@ -1353,7 +1353,7 @@ fn shaded_triangles(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     fn canvas_size(w: f32, h: f32) -> Size<Pixels> {
@@ -1426,7 +1426,7 @@ mod tests {
         }
     }
 
-    fn write_bmp(path: &std::path::Path, w: usize, h: usize, rgb: &[[f32; 3]]) {
+    pub(in crate::ui) fn write_bmp(path: &std::path::Path, w: usize, h: usize, rgb: &[[f32; 3]]) {
         let row = (w * 3 + 3) & !3;
         let size = 54 + row * h;
         let mut f = Vec::with_capacity(size);
@@ -1452,7 +1452,12 @@ mod tests {
     }
 
     /// Software rasterizer with 2x2 supersampling (per-sample alpha blend).
-    fn render(camera: Camera, highlight: Highlight, w: usize, h: usize, name: &str) {
+    pub(in crate::ui) fn rasterize(
+        camera: Camera,
+        highlight: Highlight,
+        w: usize,
+        h: usize,
+    ) -> Vec<[f32; 3]> {
         let (sw, sh) = (w * 2, h * 2);
         let bg = 0x16 as f32 / 255.0;
         let mut buf = vec![[bg; 3]; sw * sh];
@@ -1509,6 +1514,11 @@ mod tests {
                 img[y * w + x] = c;
             }
         }
+        img
+    }
+
+    /// Directory for preview images, outside the sources.
+    pub(in crate::ui) fn preview_dir() -> std::path::PathBuf {
         // When run from the scratch copy in target/scene-lab, write into the
         // real repo's target/ directory.
         let manifest = env!("CARGO_MANIFEST_DIR");
@@ -1518,7 +1528,12 @@ mod tests {
             .unwrap_or(manifest);
         let dir = std::path::Path::new(root).join("target/scene-renders");
         std::fs::create_dir_all(&dir).unwrap();
-        write_bmp(&dir.join(format!("{name}.bmp")), w, h, &img);
+        dir
+    }
+
+    fn render(camera: Camera, highlight: Highlight, w: usize, h: usize, name: &str) {
+        let img = rasterize(camera, highlight, w, h);
+        write_bmp(&preview_dir().join(format!("{name}.bmp")), w, h, &img);
     }
 
     #[::core::prelude::v1::test]

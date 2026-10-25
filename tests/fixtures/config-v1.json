@@ -4,22 +4,33 @@
     {
       "button": "home",
       "normal": {
-        "type": "default"
+        "type": "voice_toggle"
       },
       "air_mouse": {
-        "type": "default"
+        "type": "shell",
+        "command": "printf preserved"
       },
-      "normal_sources": [
-        {
-          "Consumer": 106
-        }
-      ],
+      "normal_sources": [],
       "mouse_sources": []
     },
     {
       "button": "experiences",
       "normal": {
-        "type": "default"
+        "type": "macro",
+        "steps": [
+          {
+            "type": "shortcut",
+            "key": "c",
+            "modifiers": [
+              "command"
+            ]
+          },
+          {
+            "type": "scroll",
+            "x": 4,
+            "y": -83
+          }
+        ]
       },
       "air_mouse": {
         "type": "default"
@@ -29,7 +40,11 @@
           "Consumer": 141
         }
       ],
-      "mouse_sources": []
+      "mouse_sources": [
+        {
+          "Consumer": 200
+        }
+      ]
     },
     {
       "button": "apps",
@@ -37,7 +52,8 @@
         "type": "default"
       },
       "air_mouse": {
-        "type": "default"
+        "type": "apple_script",
+        "script": "return \"preserved\""
       },
       "normal_sources": [
         {
@@ -214,7 +230,13 @@
       "mouse_sources": []
     }
   ],
-  "audio_input": null,
-  "transcription": null,
-  "mouse_idle_ms": 1500
+  "audio_input": "Legacy headset",
+  "transcription": {
+    "program": "/fixture/transcriber",
+    "args": [
+      "{audio}"
+    ],
+    "insert_text": true
+  },
+  "mouse_idle_ms": 7234
 }

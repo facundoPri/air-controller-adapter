@@ -4,10 +4,31 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
+pub const CAPTURE_SESSION_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionEnd {
+    Canceled,
+    Expired,
+    Ended,
+    Failed(String),
+}
+impl SessionEnd {
+    pub fn message(&self) -> String {
+        match self {
+            Self::Canceled => "Reader authorization was canceled. Retry setup when ready.".into(),
+            Self::Expired => "The 30-minute reader session ended. Retry setup to renew it; Bluetooth may still be connected.".into(),
+            Self::Ended => "The reader session ended. Retry setup to restore actions.".into(),
+            Self::Failed(error) => format!("Reader startup failed: {error}"),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Launcher {
     child: Option<Child>,
     pub attempted: bool,
+    started: Option<std::time::Instant>,
 }
 impl Launcher {
     pub fn pending(&self) -> bool {
@@ -37,6 +58,7 @@ impl Launcher {
         if self.pending() {
             return Ok(());
         }
+        self.started = Some(std::time::Instant::now());
         self.child = Some(
             cmd.stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -46,32 +68,46 @@ impl Launcher {
         );
         Ok(())
     }
-    pub fn poll(&mut self) -> Option<Result<(), String>> {
+    pub fn poll(&mut self) -> Option<SessionEnd> {
+        if self.started.is_some_and(|at| {
+            at.elapsed() > CAPTURE_SESSION_LIMIT + std::time::Duration::from_secs(120)
+        }) {
+            self.cancel();
+            return Some(SessionEnd::Failed(
+                "Authorization/session wait timed out. Retry explicitly when ready.".into(),
+            ));
+        }
         let child = self.child.as_mut()?;
         match child.try_wait() {
             Ok(None) => None,
             Ok(Some(_)) => {
+                self.started = None;
                 let output = self.child.take().unwrap().wait_with_output();
-                Some(output.map_err(|e| e.to_string()).and_then(|out| {
-                    if out.status.success() {
-                        Ok(())
-                    } else {
+                Some(match output {
+                    Err(error) => SessionEnd::Failed(error.to_string()),
+                    Ok(out) if out.status.success() => SessionEnd::Ended,
+                    Ok(out) => {
                         let detail = String::from_utf8_lossy(&out.stderr);
                         if detail.contains("30-minute capture session ended") {
-                            Err("The 30-minute capture session ended. Bluetooth may still be connected; use Resume reader to restore custom actions.".into())
+                            SessionEnd::Expired
+                        } else if detail.contains("-128")
+                            || detail.to_lowercase().contains("user canceled")
+                        {
+                            SessionEnd::Canceled
                         } else {
-                            Err(format!("The reader is not active: {}", detail.trim()))
+                            SessionEnd::Failed(detail.trim().into())
                         }
                     }
-                }))
+                })
             }
-            Err(e) => {
-                self.stop();
-                Some(Err(e.to_string()))
+            Err(error) => {
+                self.cancel();
+                Some(SessionEnd::Failed(error.to_string()))
             }
         }
     }
-    fn stop(&mut self) {
+    pub fn cancel(&mut self) {
+        self.started = None;
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
@@ -80,7 +116,7 @@ impl Launcher {
 }
 impl Drop for Launcher {
     fn drop(&mut self) {
-        self.stop();
+        self.cancel();
     }
 }
 pub fn packaged_helper(executable: &Path) -> Result<PathBuf, String> {
@@ -191,6 +227,41 @@ test "${{actual%% *}}" = '{expected}' || {{ echo 'Capture changed during authori
 mod tests {
     use super::*;
     #[test]
+    fn launcher_distinguishes_cancellation_expiry_and_failure_without_authorizing() {
+        for (diagnostic, expected) in [
+            ("User canceled. (-128)", SessionEnd::Canceled),
+            (
+                "30-minute capture session ended; remote released",
+                SessionEnd::Expired,
+            ),
+            (
+                "fixture failure",
+                SessionEnd::Failed("fixture failure".into()),
+            ),
+        ] {
+            let mut launcher = Launcher::default();
+            launcher
+                .spawn(Command::new("/bin/sh").args([
+                    "-c",
+                    "printf '%s' \"$1\" >&2; exit 1",
+                    "fixture",
+                    diagnostic,
+                ]))
+                .unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            let end = loop {
+                if let Some(end) = launcher.poll() {
+                    break end;
+                }
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            };
+            assert_eq!(end, expected);
+            assert!(!launcher.pending());
+        }
+    }
+
+    #[test]
     fn substituted_helper_is_rejected_before_authorization() {
         let root = std::env::temp_dir().join(format!("rfa-helper-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -236,7 +307,7 @@ mod tests {
         let id = launch.child.as_ref().unwrap().id();
         launch.spawn(Command::new("/bin/sleep").arg("5")).unwrap();
         assert_eq!(launch.child.as_ref().unwrap().id(), id);
-        launch.stop();
+        launch.cancel();
         assert!(!launch.pending());
     }
     #[cfg(target_os = "macos")]

@@ -3,7 +3,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
-TAG="${1:-v0.1.0-preview.2}"
+TAG="${1:-v0.1.0-preview.3}"
 case "$TAG" in ''|*[!a-zA-Z0-9._-]*) echo 'Invalid release tag' >&2; exit 2 ;; esac
 DIST="${READY_AIR_DIST:-$ROOT/dist/release}"
 OUTPUT="$ROOT/dist/releases/$TAG"
@@ -17,14 +17,20 @@ ARCH=$(lipo -archs "$STUDIO/Contents/MacOS/ReadyForAirStudio")
 [ "$(lipo -archs "$CAPTURE/Contents/MacOS/ReadyForAirCapture")" = arm64 ]
 STAGE=$(mktemp -d "${TMPDIR:-/tmp/}aca-package.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT HUP INT TERM
-mkdir -p "$STAGE/ACA/docs/releases" "$OUTPUT"
+mkdir -p "$STAGE/ACA" "$OUTPUT"
 ditto --noextattr --norsrc "$STUDIO" "$STAGE/ACA/ACA Studio.app"
 ditto --noextattr --norsrc "$CAPTURE" "$STAGE/ACA/ACA Capture.app"
 cp README.md THIRD_PARTY_NOTICES.md "$STAGE/ACA/"
-cp docs/configuration.md docs/config.example.json docs/voice-setup.md docs/native-engine.md docs/mr01-button-map.md docs/development.md "$STAGE/ACA/docs/"
-cp "docs/releases/$TAG.md" "$STAGE/ACA/docs/releases/"
+mkdir -p "$STAGE/ACA/assets/screenshots"
+cp assets/screenshots/aca-buttons.jpg "$STAGE/ACA/assets/screenshots/"
 {
- printf 'Release: %s\nSource commit: %s\nArchitecture: arm64\nSigning: ' "$TAG" "$(git rev-parse HEAD)"
+ printf 'Release: %s\nSource base commit: %s\n' "$TAG" "$(git rev-parse HEAD)"
+ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+  printf 'Source state: modified working tree; this binary is not an exact build of the base commit.\n'
+ else
+  printf 'Source state: clean working tree.\n'
+ fi
+ printf 'Architecture: arm64\nSigning: '
  codesign -dvv "$STUDIO" 2>&1 | sed -n '/^Signature=/p; /^Authority=/p'
  shasum -a 256 "$STAGE/ACA/ACA Studio.app/Contents/MacOS/ReadyForAirStudio" "$STAGE/ACA/ACA Capture.app/Contents/MacOS/ReadyForAirCapture" | sed "s|$STAGE/ACA/||"
 } > "$STAGE/ACA/BUILD.txt"

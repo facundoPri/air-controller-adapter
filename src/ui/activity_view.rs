@@ -1,6 +1,6 @@
 //! ACTIVITY view: packet counters and the bounded engine log (newest at bottom).
 
-use super::{StudioApp, theme::*};
+use super::{StudioApp, status, theme::*};
 use gpui_kit::{
     component::{
         Sizable,
@@ -9,6 +9,7 @@ use gpui_kit::{
     prelude::FluentBuilder,
     *,
 };
+use ready_for_air::lifecycle::ConnectionStatus;
 
 /// Rendering every bounded entry each frame is wasteful; export keeps them all.
 const VISIBLE_LOGS: usize = 400;
@@ -20,8 +21,6 @@ fn category(category: &str) -> (String, u32) {
         "mode" => ("MODE", ACCENT),
         "learn" => ("LEARN", WARN),
         "engine" => ("ENGINE", 0xc084fc),
-        "audio" => ("AUDIO", OK),
-        "voice" => ("VOICE", OK),
         "config" => ("CONFIG", 0x9ad1ff),
         "system" => ("SYSTEM", MUTED),
         "routing" => ("BUTTON", WARN),
@@ -33,7 +32,11 @@ fn category(category: &str) -> (String, u32) {
 }
 
 impl StudioApp {
-    pub(super) fn render_activity(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(super) fn render_activity(
+        &mut self,
+        status: &ConnectionStatus,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let s = &self.studio;
         let total = s.logs.len();
         let skip = total.saturating_sub(VISIBLE_LOGS);
@@ -47,7 +50,7 @@ impl StudioApp {
                 .py(px(5.))
                 .px_3()
                 .border_b_1()
-                .border_color(rgb(0x222222))
+                .border_color(rgb(0x202020))
                 .child(
                     div()
                         .flex_none()
@@ -63,7 +66,7 @@ impl StudioApp {
                             .px_1()
                             .rounded(px(3.))
                             .border_1()
-                            .border_color(rgb(0x333333))
+                            .border_color(rgb(BORDER_STRONG))
                             .text_size(px(10.5))
                             .text_color(rgb(chip_color))
                             .overflow_hidden()
@@ -82,12 +85,12 @@ impl StudioApp {
                 )
         });
 
+        let (headline, color) = status::headline(status);
         div()
             .size_full()
             .flex()
             .flex_col()
             .gap_4()
-            .pr(px(44.))
             .child(
                 card()
                     .flex_row()
@@ -121,35 +124,25 @@ impl StudioApp {
                                     .text_size(px(13.))
                                     .child(s.last_packet.clone()),
                             )
-                            .child(caption(format!(
-                                "{} · {}",
-                                mode_name(s.mode),
-                                if s.listening { "listening" } else { "not listening" }
-                            ))),
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_size(px(12.5))
+                                    .text_color(rgb(MUTED))
+                                    .child(dot(color))
+                                    .child(headline)
+                                    .when_some(status::observed_mode(status), |d, mode| {
+                                        d.child("·").child(mode)
+                                    }),
+                            ),
                     )
                     .child(
                         div()
                             .flex()
                             .flex_wrap()
                             .gap_2()
-                            .child(
-                                Button::new("listen")
-                                    .label(if s.listening {
-                                        "Stop listening"
-                                    } else {
-                                        "Start listening"
-                                    })
-                                    .small()
-                                    .when(!s.listening, |b| b.primary())
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        if this.studio.listening {
-                                            this.studio.stop_listening();
-                                        } else {
-                                            this.studio.start_listening();
-                                        }
-                                        cx.notify();
-                                    })),
-                            )
                             .child(Button::new("clear-logs").label("Clear").small().ghost().on_click(
                                 cx.listener(|this, _: &ClickEvent, _, cx| {
                                     this.studio.clear_logs();
@@ -157,7 +150,7 @@ impl StudioApp {
                                     cx.notify();
                                 }),
                             ))
-                            .child(Button::new("export-logs").label("Export").small().on_click(
+                            .child(Button::new("export-logs").label("Export").small().outline().on_click(
                                 cx.listener(|this, _: &ClickEvent, _, cx| {
                                     let r = this
                                         .studio
@@ -193,7 +186,7 @@ impl StudioApp {
                     .mb_2()
                     .when(total == 0, |d| {
                         d.child(div().p_4().child(caption(
-                            "No activity yet. Start listening and press a button on the remote.",
+                            "No activity yet. Press a button on the connected remote.",
                         )))
                     })
                     .children(rows),

@@ -24,6 +24,27 @@ impl Access {
         }
     }
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Snapshot {
+    pub input: Access,
+    pub accessibility: bool,
+    pub bluetooth: Access,
+}
+impl Snapshot {
+    pub fn observe() -> Self {
+        Self {
+            input: input(),
+            accessibility: crate::native_input::trusted(),
+            bluetooth: optional("bluetooth"),
+        }
+    }
+}
+impl Access {
+    pub fn allowed(self) -> bool {
+        matches!(self, Self::Granted | Self::Verified)
+    }
+}
+
 pub fn input() -> Access {
     #[cfg(target_os = "macos")]
     {
@@ -42,10 +63,6 @@ pub fn optional(kind: &str) -> Access {
     #[cfg(target_os = "macos")]
     unsafe {
         use std::ffi::c_void;
-        #[link(name = "AVFoundation", kind = "framework")]
-        unsafe extern "C" {
-            static AVMediaTypeAudio: *mut c_void;
-        }
         #[link(name = "CoreBluetooth", kind = "framework")]
         unsafe extern "C" {}
         #[link(name = "objc")]
@@ -54,15 +71,7 @@ pub fn optional(kind: &str) -> Access {
             fn sel_registerName(name: *const std::ffi::c_char) -> *mut c_void;
             fn objc_msgSend(receiver: *mut c_void, selector: *mut c_void) -> *mut c_void;
         }
-        let value = if kind == "microphone" {
-            let call: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> isize =
-                std::mem::transmute(objc_msgSend as *const ());
-            call(
-                objc_getClass(c"AVCaptureDevice".as_ptr()),
-                sel_registerName(c"authorizationStatusForMediaType:".as_ptr()),
-                AVMediaTypeAudio,
-            )
-        } else if kind == "bluetooth" {
+        let value = if kind == "bluetooth" {
             let call: unsafe extern "C" fn(*mut c_void, *mut c_void) -> isize =
                 std::mem::transmute(objc_msgSend as *const ());
             call(
@@ -128,9 +137,6 @@ pub fn open_settings(pane: &str) -> Result<String, String> {
         }
         "bluetooth" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth",
         "radio" => "x-apple.systempreferences:com.apple.BluetoothSettings",
-        "microphone" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-        }
         "automation" => {
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
         }
@@ -142,9 +148,23 @@ pub fn open_settings(pane: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
         .and_then(|s| {
             if s.success() {
-                Ok("Settings opened. Enable the specified app and check again.".into())
+                Ok(if pane == "radio" {
+                    "Bluetooth Settings opened. Select the intended remote to connect or disconnect.".into()
+                } else {
+                    "Settings opened. Enable the specified app and check again.".into()
+                })
             } else {
                 Err("Could not open Settings".into())
             }
         })
+}
+
+/// Called only in response to an explicit setup/capture request, never during polling.
+#[cfg(target_os = "macos")]
+pub fn request_input() -> bool {
+    #[link(name = "IOKit", kind = "framework")]
+    unsafe extern "C" {
+        fn IOHIDRequestAccess(request: u32) -> bool;
+    }
+    unsafe { IOHIDRequestAccess(1) }
 }

@@ -16,6 +16,12 @@ pub fn execute(action: &Action) -> Result<String, String> {
         &Execution {
             deadline: Instant::now() + TIMEOUT,
             cancellation: None,
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard: None,
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard_generation: std::cell::Cell::new(None),
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard_opener: None,
         },
     )
 }
@@ -30,6 +36,33 @@ pub fn execute_cancellable(
         &Execution {
             deadline: Instant::now() + TIMEOUT,
             cancellation: Some((generation, epoch)),
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard: None,
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard_generation: std::cell::Cell::new(None),
+            #[cfg(feature = "virtual-keyboard")]
+            keyboard_opener: None,
+        },
+    )
+}
+
+#[cfg(feature = "virtual-keyboard")]
+pub fn execute_with_keyboard(
+    action: &Action,
+    generation: &AtomicU64,
+    epoch: u64,
+    keyboard: &crate::keyboard::Control,
+    opener: Option<crate::studio::ButtonId>,
+    session: Option<u64>,
+) -> Result<String, String> {
+    execute_with_context(
+        action,
+        &Execution {
+            deadline: Instant::now() + TIMEOUT,
+            cancellation: Some((generation, epoch)),
+            keyboard: Some(keyboard),
+            keyboard_generation: std::cell::Cell::new(session),
+            keyboard_opener: opener,
         },
     )
 }
@@ -37,9 +70,24 @@ pub fn execute_cancellable(
 struct Execution<'a> {
     deadline: Instant,
     cancellation: Option<(&'a AtomicU64, u64)>,
+    #[cfg(feature = "virtual-keyboard")]
+    keyboard: Option<&'a crate::keyboard::Control>,
+    #[cfg(feature = "virtual-keyboard")]
+    keyboard_generation: std::cell::Cell<Option<u64>>,
+    #[cfg(feature = "virtual-keyboard")]
+    keyboard_opener: Option<crate::studio::ButtonId>,
 }
 impl Execution<'_> {
     fn check(&self) -> Result<(), String> {
+        #[cfg(feature = "virtual-keyboard")]
+        if let (Some(keyboard), Some(generation)) = (self.keyboard, self.keyboard_generation.get())
+        {
+            if keyboard.snapshot().generation != generation {
+                return Err(
+                    "Keyboard target or session changed; remaining macro steps canceled".into(),
+                );
+            }
+        }
         if self
             .cancellation
             .is_some_and(|(generation, epoch)| generation.load(Ordering::Acquire) != epoch)
@@ -65,12 +113,8 @@ fn execute_with_context(action: &Action, context: &Execution<'_>) -> Result<Stri
     Ok("Request completed; the effect depends on macOS and the target application".into())
 }
 
-/// Use the same executable contract when saving a mapping. Voice is owned by
-/// Studio and is only allowed at the root, never inside the generic executor.
+/// Use the same executable contract when saving a mapping.
 pub fn validate_definition(action: &Action) -> Result<(), String> {
-    if *action == Action::VoiceToggle {
-        return Ok(());
-    }
     validate(action, 0, &mut 0)
 }
 
@@ -85,9 +129,13 @@ pub fn uses_zoom(action: &Action) -> bool {
 }
 
 /// User-facing contract, including dependencies that posting an event cannot
-/// validate (focused app, audio device, transcription model).
-pub fn guidance(action: &Action, has_transcriber: bool) -> &'static str {
+/// validate (focused app and output device).
+pub fn guidance(action: &Action) -> &'static str {
     match action {
+        #[cfg(feature = "virtual-keyboard")]
+        Action::Keyboard { .. } => {
+            "Controls ACA's keyboard. The opener closes it across layers. Home or Capture preserves arrows and OK. A binding only in Keyboard cannot open it. Preview does not type."
+        }
         Action::Default => {
             "Preserves the original input. Home, Apps, Experiences, and Capture are Android functions with no original macOS equivalent; assign them an action. Back depends on the remote's input signal."
         }
@@ -109,6 +157,9 @@ pub fn guidance(action: &Action, has_transcriber: bool) -> &'static str {
             }
             SystemAction::Launchpad => {
                 "Opens Apps on macOS Tahoe or Launchpad on earlier versions. Presentation depends on macOS."
+            }
+            SystemAction::OnScreenKeyboard => {
+                "Shows the macOS Accessibility Keyboard. System Settings opens briefly, then focus returns to your app. Requires Accessibility and permission to control System Events. Use Air mouse + OK to click keys; arrow-key navigation is not provided. Close the keyboard with its close button."
             }
             SystemAction::VolumeUp | SystemAction::VolumeDown => {
                 "Changes output volume by 6 points (0–100). Does not change mute state. Some HDMI outputs, digital outputs, and audio interfaces require their own controls."
@@ -137,14 +188,8 @@ pub fn guidance(action: &Action, has_transcriber: bool) -> &'static str {
         Action::Scroll { .. } => {
             "Scrolls in pixels at the cursor location; 3 px is a very small movement. To move by a page, select Page Up / Page Down. Existing JSON values are preserved."
         }
-        Action::VoiceToggle if !has_transcriber => {
-            "Press once to start recording and again to save a WAV. Uses the Mac or headset microphone and requires Microphone permission. Configure a local transcriber to enable conversion and text insertion."
-        }
-        Action::VoiceToggle => {
-            "Press once to record and again to save and transcribe using your configured program. Uses the Mac or headset microphone. Inserts text only when insert_text is enabled and the same external application remains focused. The transcriber and its model must be installed."
-        }
         Action::Macro { .. } => {
-            "Runs steps in order with a total limit of 15 seconds. System effects may finish later; animations are not awaited between steps. Voice recording is not supported inside a macro."
+            "Runs steps in order with a total limit of 15 seconds. System effects may finish later; animations are not awaited between steps."
         }
         Action::AppleScript { .. } => {
             "Runs your AppleScript with your user permissions. macOS may request permission to control each target application. Limit: 15 seconds."
@@ -215,6 +260,12 @@ fn validate(action: &Action, depth: usize, count: &mut usize) -> Result<(), Stri
         return Err("Macro too large: maximum 64 steps and 4 levels".into());
     }
     match action {
+        #[cfg(feature = "virtual-keyboard")]
+        Action::Keyboard { command }
+            if depth > 0 && *command != crate::keyboard_model::KeyboardAction::Toggle =>
+        {
+            return Err("Only Toggle keyboard can be used inside a macro".into());
+        }
         Action::Macro { steps } => {
             for step in steps {
                 validate(step, depth + 1, count)?;
@@ -231,7 +282,6 @@ fn validate(action: &Action, depth: usize, count: &mut usize) -> Result<(), Stri
         Action::Scroll { x, y } if x.unsigned_abs() > 10000 || y.unsigned_abs() > 10000 => {
             return Err("Scroll out of range".into());
         }
-        Action::VoiceToggle => return Err("Recording is controlled by the application".into()),
         _ => {}
     }
     Ok(())
@@ -240,6 +290,39 @@ fn validate(action: &Action, depth: usize, count: &mut usize) -> Result<(), Stri
 fn execute_inner(action: &Action, context: &Execution<'_>) -> Result<(), String> {
     context.check()?;
     match action {
+        #[cfg(feature = "virtual-keyboard")]
+        Action::Keyboard { command } => {
+            let keyboard = context
+                .keyboard
+                .ok_or("Keyboard action requires the active ACA runtime")?;
+            if *command != crate::keyboard_model::KeyboardAction::Toggle {
+                return Err(
+                    "Navigation and selection require a physical keyboard-session press".into(),
+                );
+            }
+            let expected = context
+                .keyboard_generation
+                .get()
+                .unwrap_or_else(|| keyboard.snapshot().generation);
+            context.check()?;
+            let generation =
+                keyboard.toggle_for(expected, context.keyboard_opener, Instant::now())?;
+            let result = keyboard.wait(
+                generation,
+                context
+                    .deadline
+                    .min(Instant::now() + Duration::from_millis(500)),
+                || {
+                    context
+                        .cancellation
+                        .is_some_and(|(g, e)| g.load(Ordering::Acquire) != e)
+                },
+            );
+            if result.is_ok() {
+                context.keyboard_generation.set(Some(generation));
+            }
+            result
+        }
         Action::Default | Action::Disabled => Ok(()),
         Action::Shortcut { key, modifiers } => {
             apple_script(&shortcut_script(key, modifiers)?, context)
@@ -258,7 +341,6 @@ fn execute_inner(action: &Action, context: &Execution<'_>) -> Result<(), String>
         }
         Action::System { command } => system(command, context),
         Action::Scroll { x, y } => scroll(*x, *y),
-        Action::VoiceToggle => Err("Recording is controlled by the application".into()),
     }
 }
 
@@ -486,6 +568,9 @@ fn system(action: &SystemAction, context: &Execution<'_>) -> Result<(), String> 
                 context,
             );
         }
+        SystemAction::OnScreenKeyboard => {
+            return apple_script(include_str!("on_screen_keyboard.applescript"), context);
+        }
         SystemAction::VolumeUp => {
             "set level to (output volume of (get volume settings)) + 6\nif level > 100 then set level to 100\nset volume output volume level"
         }
@@ -525,16 +610,6 @@ mod native {
     #[link(name = "ApplicationServices", kind = "framework")]
     unsafe extern "C" {
         pub fn AXIsProcessTrusted() -> bool;
-        pub fn CGEventCreateKeyboardEvent(
-            source: *const c_void,
-            key: u16,
-            down: bool,
-        ) -> *mut c_void;
-        pub fn CGEventKeyboardSetUnicodeString(
-            event: *mut c_void,
-            length: usize,
-            string: *const u16,
-        );
         pub fn CGEventCreateScrollWheelEvent(
             source: *const c_void,
             units: u32,
@@ -578,85 +653,6 @@ fn scroll(x: i32, y: i32) -> Result<(), String> {
     {
         let _ = (x, y);
         Err("Scrolling requires macOS".into())
-    }
-}
-
-/// Bundle identifier of the frontmost application, queried without Apple Events.
-pub fn frontmost_app() -> Result<String, String> {
-    #[cfg(target_os = "macos")]
-    unsafe {
-        use std::ffi::{CStr, c_char, c_void};
-        #[link(name = "AppKit", kind = "framework")]
-        unsafe extern "C" {}
-        #[link(name = "objc")]
-        unsafe extern "C" {
-            fn objc_getClass(name: *const c_char) -> *mut c_void;
-            fn sel_registerName(name: *const c_char) -> *mut c_void;
-            fn objc_msgSend(receiver: *mut c_void, selector: *mut c_void) -> *mut c_void;
-            fn objc_autoreleasePoolPush() -> *mut c_void;
-            fn objc_autoreleasePoolPop(pool: *mut c_void);
-        }
-        let pool = objc_autoreleasePoolPush();
-        let result = (|| {
-            let class = objc_getClass(c"NSWorkspace".as_ptr());
-            let workspace = objc_msgSend(class, sel_registerName(c"sharedWorkspace".as_ptr()));
-            let app = objc_msgSend(
-                workspace,
-                sel_registerName(c"frontmostApplication".as_ptr()),
-            );
-            let bundle = objc_msgSend(app, sel_registerName(c"bundleIdentifier".as_ptr()));
-            let string = objc_msgSend(bundle, sel_registerName(c"UTF8String".as_ptr()));
-            if string.is_null() {
-                return Err("Could not identify the focused application".into());
-            }
-            Ok(CStr::from_ptr(string.cast()).to_string_lossy().into_owned())
-        })();
-        objc_autoreleasePoolPop(pool);
-        result
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("Focused application detection is only available on macOS".into())
-    }
-}
-
-/// Inserts Unicode directly, without replacing or reading the user's clipboard.
-/// Caller must only invoke after explicit opt-in and after checking external focus.
-pub fn insert_text(text: &str) -> Result<(), String> {
-    if text.encode_utf16().count() > 16384 {
-        return Err("Transcription exceeds 16,384 UTF-16 code units".into());
-    }
-    #[cfg(target_os = "macos")]
-    unsafe {
-        let target = frontmost_app()?;
-        if target.starts_with("dev.facundo.ReadyForAir")
-            || target.starts_with("dev.facundo.ready-air")
-        {
-            return Err("Select an external application before inserting the transcription".into());
-        }
-        if !native::AXIsProcessTrusted() {
-            return Err("Accessibility permission is required to insert text".into());
-        }
-        let units: Vec<u16> = text.encode_utf16().collect();
-        if units.is_empty() {
-            return Ok(());
-        }
-        // A full UTF-16 payload keeps supplementary Unicode characters together.
-        for down in [true, false] {
-            let event = native::CGEventCreateKeyboardEvent(std::ptr::null(), 0, down);
-            if event.is_null() {
-                return Err("Could not create the text event".into());
-            }
-            native::CGEventKeyboardSetUnicodeString(event, units.len(), units.as_ptr());
-            native::CGEventPost(0, event);
-            native::CFRelease(event);
-        }
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = text;
-        Err("Text insertion requires macOS".into())
     }
 }
 
@@ -804,8 +800,126 @@ mod tests {
         };
         assert!(validate(&action, 0, &mut 0).is_err());
         let action = Action::Macro {
-            steps: vec![Action::Default, Action::VoiceToggle],
+            steps: vec![
+                Action::Default,
+                Action::Shortcut {
+                    key: "unknown-key".into(),
+                    modifiers: vec![],
+                },
+            ],
         };
         assert!(validate(&action, 0, &mut 0).is_err());
     }
+}
+
+#[cfg(all(test, feature = "virtual-keyboard"))]
+mod keyboard_tests {
+    use super::*;
+    use crate::{
+        keyboard::{Command as KeyboardRequest, Control},
+        keyboard_model::KeyboardAction,
+        studio::ButtonId,
+    };
+    #[test]
+    fn unsupported_macro_keyboard_step_rejected_before_any_effect() {
+        let action = Action::Macro {
+            steps: vec![
+                Action::Shell {
+                    command: "exit 0".into(),
+                },
+                Action::Keyboard {
+                    command: KeyboardAction::Select,
+                },
+            ],
+        };
+        assert!(validate_definition(&action).is_err());
+    }
+    #[test]
+    fn session_cancellation_rejects_queued_action_before_execution() {
+        let control = Control::default();
+        let t = Instant::now();
+        let session = control.toggle(None, t).unwrap();
+        control.drain(t);
+        assert!(control.acknowledge_open(session));
+        control.cancel(None);
+        let result = execute_with_keyboard(
+            &Action::Default,
+            &AtomicU64::new(0),
+            0,
+            &control,
+            Some(ButtonId::Home),
+            Some(session),
+        );
+        assert!(result.unwrap_err().contains("session changed"));
+    }
+    #[test]
+    fn nested_macro_waits_for_toggle_ack_and_retains_physical_opener() {
+        let control = Control::default();
+        let worker = control.clone();
+        let generation = Arc::new(AtomicU64::new(0));
+        let worker_generation = generation.clone();
+        let thread = std::thread::spawn(move || {
+            execute_with_keyboard(
+                &Action::Macro {
+                    steps: vec![
+                        Action::Macro {
+                            steps: vec![Action::Keyboard {
+                                command: KeyboardAction::Toggle,
+                            }],
+                        },
+                        Action::Default,
+                    ],
+                },
+                &worker_generation,
+                0,
+                &worker,
+                Some(ButtonId::Home),
+                None,
+            )
+        });
+        let deadline = Instant::now() + Duration::from_millis(400);
+        let request = loop {
+            if let Some(r) = control.drain(Instant::now()).into_iter().next() {
+                break r;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        };
+        assert!(matches!(request.command, KeyboardRequest::Open));
+        assert_eq!(control.snapshot().opener, Some(ButtonId::Home));
+        assert!(!thread.is_finished());
+        assert!(control.acknowledge_open(request.generation));
+        assert!(thread.join().unwrap().is_ok());
+    }
+    #[test]
+    fn canceled_macro_cannot_open_after_late_ack() {
+        let control = Control::default();
+        let worker = control.clone();
+        let epoch = Arc::new(AtomicU64::new(0));
+        let worker_epoch = epoch.clone();
+        let thread = std::thread::spawn(move || {
+            execute_with_keyboard(
+                &Action::Keyboard {
+                    command: KeyboardAction::Toggle,
+                },
+                &worker_epoch,
+                0,
+                &worker,
+                None,
+                None,
+            )
+        });
+        let deadline = Instant::now() + Duration::from_millis(400);
+        let request = loop {
+            if let Some(r) = control.drain(Instant::now()).into_iter().next() {
+                break r;
+            }
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        };
+        epoch.store(1, Ordering::Release);
+        assert!(thread.join().unwrap().is_err());
+        assert!(!control.acknowledge_open(request.generation));
+    }
+    use std::sync::Arc;
 }
