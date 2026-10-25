@@ -220,6 +220,17 @@ impl StudioApp {
                         .when_some(secondary, |d, n| d.child(self.step_button("remote-secondary", n, false, cx))),
                 )
             })
+            .child(
+                Button::new("pair-remote")
+                    .label("Pair a remote")
+                    .outline()
+                    .disabled(matches!(status.state, Readiness::Connecting | Readiness::Disconnecting))
+                    .tooltip("Search directly for a remote in pairing mode. Stops the current ACA session; preserves mappings and macOS pairings.")
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        this.run_command(ConnectionCommand::DiscoverRemote);
+                        cx.notify();
+                    })),
+            )
             .when(choosing, |d| {
                 d.child(caption(if status.candidates.is_empty() {
                     "Waiting for remotes to choose from. Wake the remote you want to use."

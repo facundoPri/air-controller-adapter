@@ -5636,7 +5636,7 @@ dependencies = [
 
 [[package]]
 name = "ready-for-air"
-version = "0.1.0-preview.3"
+version = "0.1.0-preview.4"
 dependencies = [
  "btleplug",
  "cc",

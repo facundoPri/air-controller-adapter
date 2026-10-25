@@ -19,6 +19,7 @@ pub enum SetupAction {
     Accessibility,
     BluetoothPermission,
     BluetoothSettings,
+    DiscoverRemote,
     AuthorizeReader,
     EnableService,
     ApproveService,
@@ -69,6 +70,7 @@ pub struct ConnectionStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConnectionCommand {
     Connect,
+    DiscoverRemote,
     Disconnect,
     SelectDevice(String),
     ResolveSetup,

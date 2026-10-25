@@ -719,7 +719,7 @@ async fn discovery_session(
     let remaining = Duration::from_secs(60).saturating_sub(started.elapsed());
     let result = cancellable(stop, remaining, async {
         adapter.start_scan(ScanFilter::default()).await.map_err(|e| e.to_string())?;
-        log(tx, "Searching for 15 seconds. For first-time pairing, hold Back + OK until the LED flashes.");
+        log(tx, "Searching directly for 15 seconds. Hold Back + OK until the LED flashes; the remote does not need to appear in Bluetooth Settings.");
         let mut found = std::collections::BTreeMap::new();
         for _ in 0..30 {
             for peripheral in adapter.peripherals().await.map_err(|e| e.to_string())? {
@@ -739,19 +739,23 @@ async fn discovery_session(
                 tx.try_send(Event::BleCandidates(found.keys().map(|id| (id.clone(), REMOTE_NAME.into())).collect()))?;
                 return Ok(false);
             }
-            _ => return Err("Remote not found. Check pairing mode or use Bluetooth Settings for a known paired remote.".into()),
+            _ => return Err("No advertising MR-01 found. Hold Back + OK until the LED flashes, keep it nearby, then choose Search again in ACA. If another computer or phone connects first, disconnect the remote there.".into()),
         };
         let peripheral = found.remove(&id).ok_or("The selected remote is unavailable. Select a device or retry; ACA will not switch to another remote.")?;
         owned = Some(peripheral.clone());
         tx.try_send(Event::BleSelected(id.clone()))?;
+        log(tx, "MR-01 advertisement found; opening its Bluetooth connection.");
         if !peripheral.is_connected().await.map_err(|e| e.to_string())? {
-            bounded(Duration::from_secs(15), async { peripheral.connect().await.map_err(|e| e.to_string()) }).await?;
+            bounded(Duration::from_secs(15), async { peripheral.connect().await.map_err(|e| e.to_string()) })
+                .await.map_err(|e| format!("MR-01 connection/service discovery failed: {e}. Keep the remote awake and retry in ACA."))?;
         }
-        bounded(Duration::from_secs(10), async { peripheral.discover_services().await.map_err(|e| e.to_string()) }).await?;
+        bounded(Duration::from_secs(10), async { peripheral.discover_services().await.map_err(|e| e.to_string()) })
+            .await.map_err(|e| format!("MR-01 service discovery failed: {e}"))?;
         let services: Vec<_> = peripheral.services().into_iter().map(|s| s.uuid.to_string()).collect();
         std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
         let evidence = serde_json::json!({"name":REMOTE_NAME,"id":id,"services":services,"audio_confirmed":false});
         std::fs::write(root.join("connection.json"), serde_json::to_vec_pretty(&evidence).unwrap()).map_err(|e| e.to_string())?;
+        log(tx, "Bluetooth link open. Waiting for macOS to expose the remote as HID; input is not verified yet.");
         tx.try_send(Event::BleConnected)?;
         Ok(true)
     }).await;

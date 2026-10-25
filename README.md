@@ -8,9 +8,9 @@ Customize your **Motorola Ready For Air Remote MR-01** with a native Mac app bui
 
 ## Keyboard preview
 
-[**Download v0.1.0-preview.3**](https://github.com/facundoPri/air-controller-adapter/releases/tag/v0.1.0-preview.3) · [Release notes](RELEASE_NOTES.md) · [All releases](https://github.com/facundoPri/air-controller-adapter/releases)
+[**Download v0.1.0-preview.4**](https://github.com/facundoPri/air-controller-adapter/releases/tag/v0.1.0-preview.4) · [Release notes](RELEASE_NOTES.md) · [All releases](https://github.com/facundoPri/air-controller-adapter/releases)
 
-Download `ACA-v0.1.0-preview.3-macos-arm64.zip` under **Assets**. The source archives are not applications. This experimental Apple Silicon release includes one **ACA.app**, its embedded managed reader, and the virtual keyboard feature. It replaces the earlier two-app packaging. There are no Intel, Windows or Linux binaries.
+Download `ACA-v0.1.0-preview.4-macos-arm64.zip` under **Assets**. The source archives are not applications. This experimental Apple Silicon release includes one **ACA.app**, its embedded managed reader, and the virtual keyboard feature. It replaces the earlier two-app packaging. There are no Intel, Windows or Linux binaries.
 
 The app is signed with an **Apple Development** certificate, not Developer ID, and is **not notarized**. Gatekeeper may block it. Fresh-machine installation and permission setup have not been validated. The bundle declares macOS 13 as its minimum; earlier macOS versions than the development machine have not been fully tested.
 
@@ -24,7 +24,7 @@ The keyboard implementation and automated tests are available, but native text i
 4. Open ACA. If macOS blocks it, follow [Apple's instructions for opening an app from an unidentified developer](https://support.apple.com/102445). If **Open Anyway** is unavailable, record the message; do not disable Gatekeeper globally.
 5. In **Connection**, choose **Enable ACA** to register the embedded reader. Approve its background service in macOS Login Items & Extensions if requested.
 6. Grant Input Monitoring to ACA and its embedded **ACA Reader.app**, and Accessibility to ACA. The reader is inside `ACA.app/Contents/Library/Helpers/`; use Finder's **Show Package Contents** if it must be added manually. This setup flow is still unfinished. Bluetooth and Automation may also be requested for their respective features.
-7. For a new remote, hold **Back + OK** until the LED flashes and choose **Connect**. If it is already paired, ACA can detect it. Check actual button activity: an authenticated reader alone does not establish working capture.
+7. For a new remote, hold **Back + OK** until the LED flashes. Choose **Connection → Pair a remote** to search directly, even when the MR-01 is absent from Bluetooth Settings. **Search again** retries a failed search inside ACA. These controls preserve mappings and macOS pairings while clearing ACA’s previous device selection. Check actual button activity: a BLE link or authenticated reader alone does not establish working capture.
 
 After granting reader Input Monitoring, **Retry** may retain a stale Denied result. If that happens, disconnect, wait for cleanup, remove the background service through Diagnostics, and explicitly enable it again. A real reader restart recovered the observed QA instance. Avoid repeated permission toggling.
 
@@ -76,10 +76,10 @@ sh script/cargo.sh test --locked
 Build into a new directory with the keyboard explicitly enabled and an available Apple signing certificate:
 
 ```sh
-ACA_VIRTUAL_KEYBOARD=1 ACA_BUILD_ID=v0.1.0-preview.3 \
-READY_AIR_PROFILE=release READY_AIR_DIST="$PWD/dist/preview.3" \
+ACA_VIRTUAL_KEYBOARD=1 ACA_BUILD_ID=v0.1.0-preview.4 \
+READY_AIR_PROFILE=release READY_AIR_DIST="$PWD/dist/preview.4" \
 READY_AIR_SIGN_IDENTITY='<Apple signing identity>' sh script/build_unified.sh
-READY_AIR_DIST="$PWD/dist/preview.3" sh script/package_unified.sh
+READY_AIR_DIST="$PWD/dist/preview.4" sh script/package_unified.sh
 ```
 
 The build refuses to overwrite an existing candidate. Ad-hoc signing cannot enable the managed service. Packaging checks the app and reader signatures, matching build IDs and Apple Silicon architecture, then extracts and verifies the ZIP. It does not install, register or publish anything. The executable supports `--build-info`, `--verify-capture`, `--service-status` and a bounded `--probe-reader` diagnostic that reads reports without executing mappings. Probe builds cannot be packaged for use.

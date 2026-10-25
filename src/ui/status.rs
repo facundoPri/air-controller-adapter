@@ -70,6 +70,9 @@ pub fn primary(s: &ConnectionStatus) -> Option<NextStep> {
         SetupAction::Accessibility => next("Open Accessibility", resolve()),
         SetupAction::BluetoothPermission => next("Allow Bluetooth", resolve()),
         SetupAction::BluetoothSettings => next("Open Bluetooth Settings", resolve()),
+        SetupAction::DiscoverRemote => {
+            next("Search again", Step::Run(ConnectionCommand::DiscoverRemote))
+        }
         SetupAction::EnableService => next("Enable ACA", resolve()),
         SetupAction::ApproveService => next("Open Login Items", resolve()),
         SetupAction::AuthorizeReader => next("Authorize reader", resolve()),
@@ -115,11 +118,8 @@ pub fn checklist(s: &ConnectionStatus) -> [Requirement; 3] {
     [
         Requirement {
             title: "Wake or pair the remote",
-            detail: "Press any button to wake a paired remote. To pair, hold Back + OK until the LED blinks, then choose Connect. If a phone grabs the remote, turn off the phone's Bluetooth first.",
-            met: matches!(
-                s.transport,
-                TransportEvidence::HidPresent | TransportEvidence::LocalBluetoothConnected
-            ),
+            detail: "Press any button to wake a paired remote. To pair, hold Back + OK until the LED blinks, then choose Pair a remote in Connection. ACA searches directly, even if the remote is absent from Bluetooth Settings. If a phone grabs the remote, turn off the phone's Bluetooth first.",
+            met: s.transport == TransportEvidence::HidPresent,
         },
         Requirement {
             title: if cfg!(feature = "managed-reader") {
@@ -228,6 +228,19 @@ mod tests {
         let failed = status(Readiness::Failed, Some(SetupAction::BluetoothSettings));
         assert_eq!(primary(&failed).unwrap().label, "Open Bluetooth Settings");
         assert!(secondary(&failed).is_none() && can_disconnect(&failed));
+    }
+
+    #[::core::prelude::v1::test]
+    fn failed_discovery_retries_in_aca_and_ble_alone_does_not_complete_pairing() {
+        let mut s = status(Readiness::Failed, Some(SetupAction::DiscoverRemote));
+        assert_eq!(
+            primary(&s).unwrap().step,
+            Step::Run(ConnectionCommand::DiscoverRemote)
+        );
+        s.transport = TransportEvidence::LocalBluetoothConnected;
+        assert!(!checklist(&s)[0].met);
+        s.transport = TransportEvidence::HidPresent;
+        assert!(checklist(&s)[0].met);
     }
 
     #[::core::prelude::v1::test]
