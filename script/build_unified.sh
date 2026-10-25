@@ -39,9 +39,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirStudio</string>
 <key>CFBundleName</key><string>ACA</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>5</string>
+<key>CFBundleVersion</key><string>6</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>ACAReleaseVersion</key><string>0.1.0-preview.3</string>
+<key>ACAReleaseVersion</key><string>0.1.0-preview.4</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -58,7 +58,7 @@ cat > "$READER/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.facundo.ReadyForAirCapture</string>
 <key>CFBundleName</key><string>ACA Reader</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>5</string>
+<key>CFBundleVersion</key><string>6</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST
