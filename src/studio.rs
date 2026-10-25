@@ -699,6 +699,7 @@ pub struct Studio {
     discovery_error: Option<String>,
     startup_error: Option<String>,
     pending_connect: bool,
+    pending_discovery: bool,
     discover_requested: bool,
     discovery: Option<hardware::Discovery>,
     discovery_generation: u64,
@@ -823,6 +824,7 @@ impl Studio {
             discovery_error: None,
             startup_error: None,
             pending_connect: false,
+            pending_discovery: false,
             discover_requested: false,
             discovery: None,
             discovery_generation: 0,
@@ -1050,6 +1052,7 @@ impl Studio {
     }
     /// Resume local operation. Try the known HID first; discover only when it is absent.
     pub fn connect(&mut self) {
+        self.pending_discovery = false;
         self.connection_wanted = true;
         self.actions_requested = true;
         self.engine_error = None;
@@ -1072,6 +1075,24 @@ impl Studio {
         self.launcher.attempted = false;
         self.session_end = None;
         self.start_listening();
+    }
+    fn discover_remote(&mut self, selected: Option<String>) {
+        self.stop_runtime();
+        self.connection_wanted = true;
+        self.actions_requested = true;
+        self.connected = false;
+        self.engine_error = None;
+        self.reader_error = None;
+        self.discovery_error = None;
+        self.known_ble = selected;
+        *self.device_choice.write().unwrap() = hardware::SelectedDevice {
+            require_confirmation: true,
+            ..Default::default()
+        };
+        self.pending_connect = true;
+        self.pending_discovery = true;
+        self.discover_requested = true;
+        self.poll_cleanup();
     }
     fn begin_discovery(&mut self) {
         if !self.io_enabled
@@ -1122,20 +1143,7 @@ impl Studio {
             self.reader_error = None;
             self.connect();
         } else {
-            self.suspend_actions();
-            self.listening = false;
-            self.native_active = false;
-            self.capture_verified = false;
-            self.mode_observed = false;
-            self.view_motion = (0, 0);
-            *self.device_choice.write().unwrap() = hardware::SelectedDevice {
-                require_confirmation: true,
-                ..Default::default()
-            };
-            self.known_ble = Some(id);
-            self.candidates.clear();
-            self.connect();
-            self.begin_discovery();
+            self.discover_remote(Some(id));
         }
     }
     pub fn disconnect(&mut self) {
@@ -1147,6 +1155,7 @@ impl Studio {
         self.poll_cleanup();
     }
     fn stop_runtime(&mut self) {
+        self.pending_discovery = false;
         self.stopping = Some(Instant::now());
         self.cleanup_error = None;
         self.stop_failure = None;
@@ -1205,7 +1214,12 @@ impl Studio {
                     self.pending_connect = false;
                     self.launcher.attempted = false;
                     self.session_end = None;
-                    self.start_listening();
+                    if self.pending_discovery {
+                        self.pending_discovery = false;
+                        self.begin_discovery();
+                    } else {
+                        self.start_listening();
+                    }
                 }
             } else if started.elapsed() > Duration::from_secs(8) {
                 self.cleanup_error = Some("ACA is still waiting for a worker to stop. No new reader or actions will start; wait or quit ACA before retrying.".into());
@@ -1226,6 +1240,10 @@ impl Studio {
     }
     pub fn connection_command(&mut self, command: ConnectionCommand) -> Result<String, String> {
         match command {
+            ConnectionCommand::DiscoverRemote => {
+                self.discover_remote(None);
+                Ok("Hold Back + OK until the LED flashes. ACA searches directly; the remote does not need to appear in Bluetooth Settings.".into())
+            }
             ConnectionCommand::Connect => {
                 self.connect();
                 Ok("Preparing the connection.".into())
@@ -1310,6 +1328,9 @@ impl Studio {
                 }
                 Some(SetupAction::BluetoothPermission) => {
                     crate::permissions::open_settings("bluetooth")
+                }
+                Some(SetupAction::DiscoverRemote) => {
+                    self.connection_command(ConnectionCommand::DiscoverRemote)
                 }
                 Some(SetupAction::BluetoothSettings) => crate::permissions::open_settings("radio"),
                 Some(SetupAction::AuthorizeReader | SetupAction::RetryReader) => self.retry_setup(),
@@ -1580,13 +1601,19 @@ impl Studio {
             (
                 Readiness::Failed,
                 error.clone(),
-                Some(SetupAction::BluetoothSettings),
+                Some(SetupAction::DiscoverRemote),
             )
         } else if self.config_error {
             (
                 Readiness::NeedsSetup,
                 "Fix the configuration file and reload it.".into(),
                 Some(SetupAction::RepairConfiguration),
+            )
+        } else if self.connecting {
+            (
+                Readiness::Connecting,
+                "Searching for or connecting to the remote…".into(),
+                None,
             )
         } else if !self.candidates.is_empty()
             || self.device_choice.read().unwrap().require_confirmation
@@ -1660,12 +1687,6 @@ impl Studio {
                 Readiness::NeedsSetup,
                 error.clone(),
                 Some(SetupAction::RetryReader),
-            )
-        } else if self.connecting {
-            (
-                Readiness::Connecting,
-                "Connecting to the selected remote…".into(),
-                None,
             )
         } else if !self.connected {
             (
@@ -2447,8 +2468,76 @@ mod tests {
         assert!(s.connection_status().reason.contains("timed out"));
         assert_eq!(
             s.connection_status().next_action,
-            Some(SetupAction::BluetoothSettings)
+            Some(SetupAction::DiscoverRemote)
         );
+    }
+
+    #[test]
+    fn fresh_pairing_releases_previous_identity_and_ignores_old_events() {
+        let mut s = Studio::new_inner(
+            std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
+            false,
+        );
+        s.known_ble = Some("old-ble".into());
+        *s.device_choice.write().unwrap() = hardware::SelectedDevice {
+            path: Some("old-hid".into()),
+            serial: Some("old-serial".into()),
+            require_confirmation: false,
+        };
+        let old = hardware::Events::new(
+            s.tx.clone(),
+            hardware::EventSource::Discovery,
+            s.discovery_generation,
+        );
+        s.connected = true;
+        s.listening = true;
+        s.native_active = true;
+        s.capture_verified = true;
+        s.actions_enabled = true;
+        s.connection_command(ConnectionCommand::DiscoverRemote)
+            .unwrap();
+        old.send(Event::BleSelected("old-ble".into())).unwrap();
+        old.send(Event::BleConnected).unwrap();
+        s.poll_with_trust(true);
+        assert!(s.known_ble.is_none());
+        assert!(s.device_choice.read().unwrap().path.is_none());
+        assert!(s.device_choice.read().unwrap().serial.is_none());
+        assert!(s.device_choice.read().unwrap().require_confirmation);
+        assert!(!s.connected && !s.listening && !s.capture_verified && !s.actions_enabled);
+        assert!(s.discover_requested);
+    }
+
+    #[test]
+    fn pairing_waits_for_cleanup_and_disconnect_cancels_the_new_attempt() {
+        let mut s = Studio::new_inner(
+            std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
+            false,
+        );
+        s.work_busy.store(true, Ordering::Release);
+        s.connection_command(ConnectionCommand::DiscoverRemote)
+            .unwrap();
+        assert_eq!(s.connection_status().state, Readiness::Disconnecting);
+        assert!(s.pending_discovery && s.pending_connect);
+        assert!(s.discovery.is_none() && s.reader_thread.is_none());
+        s.disconnect();
+        s.work_busy.store(false, Ordering::Release);
+        s.poll_with_trust(true);
+        assert!(!s.pending_discovery && !s.pending_connect && !s.discover_requested);
+        assert!(!s.connection_status().reconnect_allowed);
+    }
+
+    #[test]
+    fn bluetooth_search_is_visible_before_reader_permissions_are_requested() {
+        let mut s = Studio::new_inner(
+            std::env::temp_dir().join(uuid::Uuid::new_v4().to_string()),
+            false,
+        );
+        s.connecting = true;
+        s.device_choice.write().unwrap().require_confirmation = true;
+        s.permission_snapshot.input = crate::permissions::Access::Denied;
+        s.permission_snapshot.accessibility = false;
+        assert_eq!(s.connection_status().state, Readiness::Connecting);
+        assert!(s.connection_status().next_action.is_none());
     }
 
     #[test]
